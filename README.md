@@ -14,9 +14,7 @@ A static web app (index.html, style.css, app.js) hosted on Vercel, with a Supaba
 Open a terminal in this folder and run `npx serve .`, then open the address it prints. It uses the live Supabase database.
 
 ## Deploy changes
-You need to be added to the Vercel team that owns the "mingle" project.
-1. In this folder: `npx vercel@latest login`
-2. Then: `npx vercel@latest --prod` and, when asked, link to the existing project "mingle".
+The Vercel project "mingle" is connected to this repository. Every push to `main` deploys to https://mingle-alpha.vercel.app automatically, usually within a minute. Work on a branch and open a pull request if you want a preview link before it goes live.
 
 ## Routes
 - /                   home (Creator / Brand / Team)
