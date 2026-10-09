@@ -75,7 +75,7 @@ begin
   return case when chk then 'check' else 'fits' end;
 end $$;
 create or replace function public_profile(c creators) returns jsonb language sql stable set search_path = public as
-$$ select jsonb_build_object('handle', c.handle, 'niche', c.niche, 'followers_band', c.followers_band, 'verified', c.verified,
+$$ select jsonb_build_object('handle', c.handle, 'niche', c.niche, 'followers_band', c.followers_band, 'verified', c.verified, 'verified_at', c.verified_at,
    'top_city', c.top_city, 'top_city_share', c.top_city_share, 'age_band', c.age_band,
    'on_time_posts', c.on_time_posts, 'total_posts', c.total_posts) $$;
 

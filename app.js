@@ -29,7 +29,7 @@ const S={}; COLLS.forEach(c=>{S[c]={};});
 let mode="connecting",pending=false,teamKey=null;
 const ui={role:"creator",tab:{creator:"offers",brand:"send",team:"today"},token:null,setup:false,editRules:false,justSetup:false,
   deal:null,dealSide:null,brandCode:"",teamOk:false,found:null,findTried:false,draft:{},err:{},sent:null,showDemo:true,
-  picks:{},changeOpen:false,msg:{},offFilter:"all",busy:false,exportTable:"offers",
+  picks:{},changeOpen:false,tips:new Set(),msg:{},offFilter:"all",busy:false,exportTable:"offers",
   viewed:new Set(),once:new Set(),ranked:new Set(),opened:new Set(),t0:{}};
 
 /* ---------- helpers ---------- */
@@ -165,8 +165,8 @@ function setBanner(){
 }
 function tabsFor(){
   if(ui.deal)return null;
-  if(ui.role==="creator")return meC()?[["offers","Offers","inbox"],["contracts","Contracts","doc"],["link","My link","send"],["profile","Profile","user"]]:null;
-  if(ui.role==="brand")return[["send","Send brief","send"],["campaign","Campaign","plus"],["contracts","Contracts","doc"]];
+  if(ui.role==="creator")return meC()?[["offers","Offers","inbox"],["contracts","Terms","doc"],["link","My link","send"],["profile","Profile","user"]]:null;
+  if(ui.role==="brand")return[["send","Send brief","send"],["campaign","Campaign","plus"],["contracts","Terms","doc"]];
   return teamKey?[["today","Today","home"],["campaigns","Campaigns","rank"],["offers","Offers","inbox"],["log","Log","list"]]:null;
 }
 function render(){
@@ -204,14 +204,20 @@ function after(){
 /* ---------- form fields ---------- */
 function F(form,k,label,type,o){
   o=o||{};const v=D(form)[k];const id=form+"-"+k;const hint=o.hint?' <span class="hint">'+esc(o.hint)+'</span>':"";
-  if(type==="select")return '<div class="field"><label for="'+id+'">'+esc(label)+hint+'</label><select id="'+id+'" data-f="'+form+'.'+k+'"'+(o.rr?' data-rr':'')+'>'+(o.blank?'<option value="">Choose</option>':'')+opt(o.options,v==null?o.def:v)+'</select></div>';
-  if(type==="textarea")return '<div class="field"><label for="'+id+'">'+esc(label)+hint+'</label><textarea id="'+id+'" data-f="'+form+'.'+k+'" placeholder="'+esc(o.ph||"")+'">'+esc(v||"")+'</textarea></div>';
-  return '<div class="field"><label for="'+id+'">'+esc(label)+hint+'</label><input id="'+id+'" type="'+(type||"text")+'" data-f="'+form+'.'+k+'" value="'+esc(v==null?(o.def==null?"":o.def):v)+'" placeholder="'+esc(o.ph||"")+'"'+(o.list?' list="'+o.list+'"':'')+(type==="number"?' inputmode="numeric" min="0"':'')+(o.ro?' readonly':'')+'></div>';
+  const lab='<label for="'+id+'">'+esc(label)+hint+'</label>',L=o.tip?'<div class="lblrow">'+lab+o.tip+'</div>':lab;
+  if(type==="select")return '<div class="field">'+L+'<select id="'+id+'" data-f="'+form+'.'+k+'"'+(o.rr?' data-rr':'')+'>'+(o.blank?'<option value="">Choose</option>':'')+opt(o.options,v==null?o.def:v)+'</select></div>';
+  if(type==="textarea")return '<div class="field">'+L+'<textarea id="'+id+'" data-f="'+form+'.'+k+'" placeholder="'+esc(o.ph||"")+'">'+esc(v||"")+'</textarea></div>';
+  return '<div class="field">'+L+'<input id="'+id+'" type="'+(type||"text")+'" data-f="'+form+'.'+k+'" value="'+esc(v==null?(o.def==null?"":o.def):v)+'" placeholder="'+esc(o.ph||"")+'"'+(o.list?' list="'+o.list+'"':'')+(type==="number"?' inputmode="numeric" min="0"':'')+(o.ro?' readonly':'')+'></div>';
 }
 function CK(form,k,label){return '<label class="check"><input type="checkbox" data-f="'+form+'.'+k+'"'+(D(form)[k]?" checked":"")+'><span>'+label+'</span></label>';}
 function RD(form,k,val,label,rr){return '<label class="radio"><input type="radio" name="'+form+'-'+k+'" value="'+esc(val)+'" data-f="'+form+'.'+k+'"'+(rr?' data-rr':'')+(String(D(form)[k])===String(val)?" checked":"")+'><span>'+label+'</span></label>';}
 const errBox=k=>ui.err[k]?'<p class="status warn" role="alert">'+esc(ui.err[k])+'</p>':"";
 const cityList='<datalist id="cities">'+CITIES.map(c=>'<option value="'+c+'">').join("")+'</datalist>';
+// tap-to-explain: a "?" button that opens a plain-language line under a term
+function tip(key,text){const open=ui.tips.has(key);return '<button class="tipbtn" data-act="tip" data-v="'+esc(key)+'" aria-expanded="'+open+'" aria-label="What does this mean?">?</button>'+(open?'<span class="tiptext">'+esc(text)+'</span>':'');}
+// "you" wording on the creator's own offers; neutral wording on agreed terms, which both sides read
+const usageTip=(t,both)=>t.usage_type==="paid"?(both?"Besides the creator's page, the brand can run the video as an ad from its own account for ":"Besides your page, the brand can run your video as an ad from their own account for ")+t.usage_days+" days. After that it must stop. Creators usually charge extra for this.":(both?"The brand can share or repost the post as it is, but cannot run it as an ad from its account.":"The brand can share or repost your post as it is, but cannot run it as an ad from their account.");
+const revTip=(t,both)=>{const n=Number(t.revision_rounds),times=n===1?"once":"up to "+n+" times";return n>0?(both?"Before posting, the brand can ask the creator to re-edit the video "+times+".":"Before you post, the brand can ask you to re-edit the video "+times+".")+" Anything more, or any change after posting, is a new request.":(both?"The brand sees the video before it is posted but cannot ask for re-edits.":"The brand sees your video before you post but cannot ask for re-edits.");};
 
 /* ---------- creator ---------- */
 function creatorView(){
@@ -270,14 +276,14 @@ function offerCard(o,me,forCreator){
   const fee=t.is_barter?"Barter "+inr(t.barter_value_inr):inr(t.fee_inr);
   let foot="";
   if(o.status==="declined")foot='<p class="status bad">You declined this offer.</p>'+(ui.msg["decline:"+o.id]?msgBox("decline:"+o.id,ui.msg["decline:"+o.id]):"");
-  else if(isContract(o))foot='<p class="status '+(o.status==="locked"?"ok":"info")+'">'+(o.status==="locked"?"Terms locked on "+fmtD(o.locked_at):"Contract ready to review")+'</p><button class="btn dark wide" data-act="openDeal" data-v="'+o.id+'" data-side="creator">Review contract</button>';
-  else if(o.interested)foot='<p class="status info">You said yes. Your contract is being prepared. We send it within 12 hours of your yes.</p>';
+  else if(isContract(o))foot='<p class="status '+(o.status==="locked"?"ok":"info")+'">'+(o.status==="locked"?"Terms locked on "+fmtD(o.locked_at):"Agreed terms ready to review")+'</p><button class="btn dark wide" data-act="openDeal" data-v="'+o.id+'" data-side="creator">Review agreed terms</button>';
+  else if(o.interested)foot='<p class="status info">You said yes. We are writing up the agreed terms and send them within 12 hours of your yes.</p>';
   else foot='<div class="btnrow"><button class="btn primary" data-act="interested" data-v="'+o.id+'">I\'m interested</button><button class="btn" data-act="decline" data-v="'+o.id+'">Decline politely</button></div>';
   return '<article class="post '+f.result+'">'+
    '<div class="phead">'+av(b.brand_name,b.brand_name,"sq")+'<div class="who"><b>'+esc(b.brand_name)+'</b><span class="sub">'+src+' · '+ago(o.created_at)+'</span></div><span class="pill '+f.result+'">'+({fits:"Fits",check:"Check",misses:"Misses"})[f.result]+'</span></div>'+
    '<div class="media" style="'+grad(b.product+b.brand_name)+'"><h3>'+esc(b.product)+'</h3><span class="tag">'+esc(t.deliverables)+'</span><span class="tag r">'+fee+'</span></div>'+
    '<div class="pbody"><ul class="reasons">'+f.reasons.map(r=>'<li>'+esc(r)+'</li>').join("")+'</ul>'+
-   '<dl class="terms"><dt>Category</dt><dd>'+esc(t.category)+'</dd><dt>Post on</dt><dd>'+fmtD(t.post_date)+'</dd><dt>Runs</dt><dd>'+(t.usage_type==="paid"?"Your page plus paid ads, "+esc(t.usage_days)+" days":"Your page only")+'</dd><dt>Paid within</dt><dd>'+(t.is_barter?"Barter":esc(t.payment_days)+" days of posting")+'</dd></dl>'+
+   '<dl class="terms"><dt>Category</dt><dd>'+esc(t.category)+'</dd><dt>Post on</dt><dd>'+fmtD(t.post_date)+'</dd><dt>Runs</dt><dd>'+(t.usage_type==="paid"?"Your page plus paid ads, "+esc(t.usage_days)+" days":"Your page only")+tip("use:"+o.id,usageTip(t))+'</dd><dt>Revisions</dt><dd>'+esc(t.revision_rounds)+' round'+(Number(t.revision_rounds)===1?"":"s")+tip("rev:"+o.id,revTip(t))+'</dd><dt>Paid within</dt><dd>'+(t.is_barter?"Barter":esc(t.payment_days)+" days of posting")+'</dd></dl>'+
    foot+'</div></article>';
 }
 function creatorOffers(me){
@@ -296,7 +302,7 @@ function creatorOffers(me){
 }
 function creatorContracts(me){
   const list=rows("offers").filter(o=>o.creator_id===me.handle&&isContract(o));
-  return creatorHead(me)+'<div class="panel">'+(list.length?list.map(o=>dealRow(o,"creator")).join(""):'<div class="card"><h3>No contracts yet</h3><p class="muted">When you say yes to an offer, our team prepares the contract within 12 hours and it appears here.</p></div>')+'</div>';
+  return creatorHead(me)+'<div class="panel">'+(list.length?list.map(o=>dealRow(o,"creator")).join(""):'<div class="card"><h3>No agreed terms yet</h3><p class="muted">When you say yes to an offer, our team writes up the agreed terms within 12 hours and they appear here.</p></div>')+'</div>';
 }
 function dealRow(o,side){
   const b=briefOf(o),c=byHandle(o.creator_id)||{handle:o.creator_id};
@@ -314,7 +320,7 @@ function creatorLink(me){
   return creatorHead(me)+'<div class="panel">'+
   (ui.justSetup?'<p class="status ok">You\'re set up. Save your private link below; it opens your offers on any phone.</p>':"")+
   '<div class="card"><h3>Your reply to brands</h3><p class="muted">Paste this when a brand DMs you. Their brief comes to you complete and sorted.</p>'+msgBox("reply",ui.msg.reply)+'</div>'+
-  '<div class="card"><h3>Your private link</h3><div class="link">'+esc(ORIGIN+"/me/"+me.private_token)+'</div><p class="muted">Keep this link private. It opens your offers and contracts on any phone. Your code is <b>'+esc(me.private_token)+'</b>.</p></div>'+
+  '<div class="card"><h3>Your private link</h3><div class="link">'+esc(ORIGIN+"/me/"+me.private_token)+'</div><p class="muted">Keep this link private. It opens your offers and agreed terms on any phone. Your code is <b>'+esc(me.private_token)+'</b>.</p></div>'+
   '<div class="card"><h3>I sent my link</h3><p class="muted">Tell us which brand you sent it to, so we can follow up if they go quiet.</p>'+
    '<div class="row"><input type="text" data-f="send.brand" aria-label="Brand handle" placeholder="Brand handle" value="'+esc(D("send").brand||"")+'"><button class="btn sm dark" data-act="logSendCreator">Log</button></div>'+
    (sends.length?'<table class="trk"><thead><tr><th>Brand</th><th>Sent</th><th>Result</th></tr></thead><tbody>'+sends.slice(0,6).map(s=>'<tr><td>@'+esc(s.brand_handle)+'</td><td>'+fmtD(s.sent_at)+'</td><td>'+esc(outcomeLabel(s.outcome))+'</td></tr>').join("")+'</tbody></table>':"")+
@@ -343,7 +349,7 @@ function brandView(){
    (ui.findTried&&!c?'<p class="status warn" role="alert">This link is not active. Ask the creator for their current link.</p>':'')+'</div>';
   if(c){
     out+='<div class="card"><div class="prof">'+av(c.handle,c.handle,"lg")+'<div style="display:grid;gap:4px"><b>@'+esc(c.handle)+(c.verified?'<span class="tick" aria-label="verified">✓</span>':'')+'</b><span class="muted">'+esc(c.niche)+' · '+esc(c.followers_band||"")+' followers</span>'+
-     (c.verified?'<span class="info">Verified: '+esc(c.top_city)+' '+esc(c.top_city_share)+'%, '+esc(c.age_band)+(c.total_posts?', posted on time '+c.on_time_posts+' of '+c.total_posts:'')+'</span>':'<span class="info">Audience check pending</span>')+'</div></div></div>'+
+     (c.verified?'<span class="info">Verified'+(c.verified_at?' on '+fmtD(c.verified_at):'')+': '+esc(c.top_city)+' '+esc(c.top_city_share)+'%, '+esc(c.age_band)+(c.total_posts?', posted on time '+c.on_time_posts+' of '+c.total_posts:'')+'</span>':'<span class="info">Audience check pending</span>')+'</div></div></div>'+
      briefForm("brief",false);
   }
   return out+'</div>';
@@ -360,10 +366,10 @@ function briefForm(form,camp){
    F(form,"deliverables","What each creator makes","text",{ph:"1 reel and 2 stories"})+
    '<div class="field"><span class="lbl">Payment</span>'+RD(form,"pay","paid","Fee per creator",true)+RD(form,"pay","barter","Barter (product only)",true)+'</div>'+
    (f.pay==="barter"?F(form,"barter_value_inr","Product value","number",{hint:"₹"}):F(form,"fee_inr","Fee per creator","number",{hint:"₹"}))+
-   '<div class="field"><span class="lbl">Where it runs</span>'+RD(form,"usage_type","organic","Creator\'s page only",true)+RD(form,"usage_type","paid","Also as a paid ad",true)+'</div>'+
+   '<div class="field"><div class="lblrow"><span class="lbl">Where it runs</span>'+tip(form+":use","Creator\'s page only: you can share or repost the post as it is, but not run it as an ad. Also as a paid ad: you can run the video as an ad from your own account for the days you set. Creators usually charge extra for paid use.")+'</div>'+RD(form,"usage_type","organic","Creator\'s page only",true)+RD(form,"usage_type","paid","Also as a paid ad",true)+'</div>'+
    (f.usage_type==="paid"?F(form,"usage_days","Paid ad for how many days","number",{ph:"90"}):"")+
-   '<div class="row2">'+F(form,"revision_rounds","Revision rounds","select",{options:[0,1,2,3]})+F(form,"post_date","Post date","date")+'</div>'+
-   F(form,"payment_days","Pay within (days after posting)","select",{options:PAYDAYS})+
+   F(form,"revision_rounds","Revision rounds","select",{options:[0,1,2,3],tip:tip(form+":rev","How many times you can ask the creator to re-edit the video before it is posted. Changes after posting are a new request.")})+
+   '<div class="row2">'+F(form,"post_date","Post date","date")+F(form,"payment_days","Pay within","select",{options:PAYDAYS,hint:"days after posting"})+'</div>'+
    F(form,"claims","Anything the creator must say","textarea",{ph:"Optional. For example a claim about results."})+'</div>'+
   (camp?'<div class="card"><h3>Who you want</h3><div class="row2">'+F(form,"creators_wanted","Creators wanted","number")+F(form,"target_niche","Niche","select",{options:NICHES})+'</div><div class="row2">'+F(form,"target_city","Audience city","text",{list:"cities",ph:"Delhi"})+F(form,"target_age_band","Age band","select",{options:AGES})+'</div>'+cityList+'</div>':"")+
   errBox(form)+'<button class="btn primary wide" data-act="sendBrief" data-v="'+form+'"'+(ui.busy?" disabled":"")+'>Send brief</button>';
@@ -371,16 +377,16 @@ function briefForm(form,camp){
 function sentView(){
   const s=ui.sent;
   return '<section class="hero"><h1>Brief <em>sent</em></h1></section><div class="panel"><p class="status ok">Brief sent. Nothing is final until both sides confirm.</p>'+
-  '<div class="card"><h3>Your brief code</h3><div class="link">'+esc(s.code)+'</div><p class="muted">Keep this code. When the contract is ready we send you a link. You can also open Mingle, tap Brand, then Contracts, and enter the code.</p></div>'+
-  (s.camp?'<p class="muted">Our team ranks verified creators for your brief and invites the best matches within 24 hours.</p>':'<p class="muted">@'+esc(s.handle)+' sees your brief now, sorted against their rules. If they say yes, we send both of you the contract within 12 hours.</p>')+
-  '<button class="btn wide" data-act="newBrief">Send another brief</button><button class="btn dark wide" data-act="tab" data-v="contracts">Go to contracts</button></div>';
+  '<div class="card"><h3>Your brief code</h3><div class="link">'+esc(s.code)+'</div><p class="muted">Keep this code. When the agreed terms are ready we send you a link. You can also open Mingle, tap Brand, then Terms, and enter the code.</p></div>'+
+  (s.camp?'<p class="muted">Our team ranks verified creators for your brief and invites the best matches within 24 hours.</p>':'<p class="muted">@'+esc(s.handle)+' sees your brief now, sorted against their rules. If they say yes, we send both of you the agreed terms within 12 hours.</p>')+
+  '<button class="btn wide" data-act="newBrief">Send another brief</button><button class="btn dark wide" data-act="tab" data-v="contracts">Go to agreed terms</button></div>';
 }
 function brandContracts(){
   const code=String(ui.brandCode||"").trim();
   const list=code?rows("offers").filter(o=>o.brand_token===code):[];
   let note="";
-  if(code&&!ui.loading&&!list.length)note='<p class="status '+(ui.codeFound?"info":"warn")+'" role="alert">'+(ui.codeFound?"Brief received. Your contract is being prepared. We send it within 12 hours of the creator\'s yes.":"No brief with that code. Check the code we sent you.")+'</p>';
-  return '<section class="hero"><h1>Your <em>contracts</em></h1><p class="muted">Enter the brief code we gave you when you sent the brief.</p></section><div class="panel"><div class="card"><label for="bc-code">Brief code</label><div class="row"><input id="bc-code" type="text" data-f="bc.code" value="'+esc(D("bc").code||ui.brandCode||"")+'" placeholder="e.g. dewdrop-01"><button class="btn dark sm" data-act="brandCode">Open</button></div>'+note+'</div>'+
+  if(code&&!ui.loading&&!list.length)note='<p class="status '+(ui.codeFound?"info":"warn")+'" role="alert">'+(ui.codeFound?"Brief received. We are writing up the agreed terms and send them within 12 hours of the creator\'s yes.":"No brief with that code. Check the code we sent you.")+'</p>';
+  return '<section class="hero"><h1>Your <em>agreed terms</em></h1><p class="muted">Enter the brief code we gave you when you sent the brief.</p></section><div class="panel"><div class="card"><label for="bc-code">Brief code</label><div class="row"><input id="bc-code" type="text" data-f="bc.code" value="'+esc(D("bc").code||ui.brandCode||"")+'" placeholder="e.g. dewdrop-01"><button class="btn dark sm" data-act="brandCode">Open</button></div>'+note+'</div>'+
   list.map(o=>dealRow(o,"brand")).join("")+
   '<p class="muted">Trying it out? Demo brief codes are dewdrop-01, bloomwell-01, leaf-01 and kumkum-01.</p></div>';
 }
@@ -388,11 +394,11 @@ function brandContracts(){
 /* ---------- contract ---------- */
 function dealView(){
   const o=all("offers")[ui.deal];
-  const head='<div class="back"><button class="iconbtn" data-act="closeDeal" aria-label="Back">'+ic("back")+'</button><b>Contract</b></div>';
-  if(!o||!ui.dealSide)return head+'<div class="panel"><p class="status warn">'+(ui.loading||mode==="connecting"?"Loading…":"This contract link is not valid. Use the link we sent you.")+'</p></div>';
+  const head='<div class="back"><button class="iconbtn" data-act="closeDeal" aria-label="Back">'+ic("back")+'</button><b>Agreed terms</b></div>';
+  if(!o||!ui.dealSide)return head+'<div class="panel"><p class="status warn">'+(ui.loading||mode==="connecting"?"Loading…":"This link to the agreed terms is not valid. Use the link we sent you.")+'</p></div>';
   const b=briefOf(o),t=terms(o,b),c=byHandle(o.creator_id)||{handle:o.creator_id},side=ui.dealSide,other=side==="creator"?"brand":"creator";
   let out=head+'<div class="panel"><div class="row">'+av(b.brand_name,b.brand_name,"sq")+'<span style="font-weight:700">×</span>'+av(c.handle,c.handle)+'<div class="grow"><b>'+esc(b.brand_name)+' × @'+esc(c.handle)+'</b><p class="muted">You are viewing as the '+side+'</p></div></div>';
-  if(!isContract(o))return out+'<p class="status info">Your contract is being prepared. We send it within 12 hours of your yes.</p></div>';
+  if(!isContract(o))return out+'<p class="status info">We are writing up the agreed terms and send them within 12 hours of your yes.</p></div>';
   if(o.status==="change_requested"){
     const crs=rows("change_requests").filter(r=>r.offer_id===o.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
     out+='<p class="status warn">Changed after confirmation. Please review.</p>'+(crs[0]?'<p class="muted">The '+esc(crs[0].side)+' asked to change <b>'+esc(crs[0].field)+'</b>: “'+esc(crs[0].note)+'”. Our team updates the terms and sends them back to both of you.</p>':"");
@@ -402,12 +408,12 @@ function dealView(){
    '<dt>You make</dt><dd>'+esc(t.deliverables)+'</dd>'+
    '<dt>Product</dt><dd>'+esc(t.product)+'</dd>'+
    '<dt>Fee</dt><dd>'+(t.is_barter?"Barter: product worth "+inr(t.barter_value_inr):inr(t.fee_inr))+'</dd>'+
-   '<dt>Where it runs</dt><dd'+(t.usage_type==="paid"?' class="flag"':'')+'>'+(t.usage_type==="paid"?"Creator's page, plus paid ads for "+esc(t.usage_days)+" days":"Creator's page only")+'</dd>'+
-   '<dt>Revisions</dt><dd>'+esc(t.revision_rounds)+' round'+(Number(t.revision_rounds)===1?"":"s")+', before posting only</dd>'+
+   '<dt>Where it runs</dt><dd'+(t.usage_type==="paid"?' class="flag"':'')+'>'+(t.usage_type==="paid"?"Creator's page, plus paid ads for "+esc(t.usage_days)+" days":"Creator's page only")+tip("duse:"+o.id,usageTip(t,true))+'</dd>'+
+   '<dt>Revisions</dt><dd>'+esc(t.revision_rounds)+' round'+(Number(t.revision_rounds)===1?"":"s")+', before posting only'+tip("drev:"+o.id,revTip(t,true))+'</dd>'+
    '<dt>Post on</dt><dd>'+fmtD(t.post_date)+'</dd>'+
    '<dt>Paid by</dt><dd>'+(t.is_barter?"Not applicable, barter":fmtD(addDays(t.post_date,t.payment_days)))+'</dd>'+
    '<dt>Claims asked</dt><dd'+(String(t.claims||"").trim()?' class="flag"':'')+'>'+(String(t.claims||"").trim()?esc(t.claims):"None")+'</dd>'+
-   '<dt>Creator</dt><dd>@'+esc(c.handle)+'</dd>'+
+   '<dt>Creator</dt><dd>@'+esc(c.handle)+(c.verified_at?'<span class="muted" style="display:block;font-weight:400">Audience verified on '+fmtD(c.verified_at)+'</span>':'')+'</dd>'+
    '<dt>Brand contact</dt><dd>'+esc(b.contact_name)+(b.contact_role?", "+esc(b.contact_role):"")+'</dd></dl></div>'+
   '<ul class="steps"><li class="'+(o.creator_confirmed_at?"done":"")+'"><span class="dot"></span>'+(o.creator_confirmed_at?"Creator confirmed on "+fmtD(o.creator_confirmed_at):"Waiting for the creator")+'</li><li class="'+(o.brand_confirmed_at?"done":"")+'"><span class="dot"></span>'+(o.brand_confirmed_at?"Brand confirmed on "+fmtD(o.brand_confirmed_at):"Waiting for the brand")+'</li></ul>';
   const mine=o[side+"_confirmed_at"];
@@ -421,7 +427,7 @@ function dealView(){
 
 /* ---------- team ---------- */
 function teamView(){
-  if(!teamKey)return '<section class="hero"><h1>Team <em>page</em></h1><p class="muted">For the Mingle team: verify creators, rank creators for campaigns, prepare contracts and log link sends.</p></section><div class="panel"><div class="card">'+F("tk","key","Team key","password")+(ui.err.tk?'<p class="status bad" role="alert">Not allowed.</p>':"")+'<button class="btn dark wide" data-act="teamKey">Open team page</button><p class="muted">Team members only.</p></div></div>';
+  if(!teamKey)return '<section class="hero"><h1>Team <em>page</em></h1><p class="muted">For the Mingle team: verify creators, rank creators for campaigns, write up agreed terms and log link sends.</p></section><div class="panel"><div class="card">'+F("tk","key","Team key","password")+(ui.err.tk?'<p class="status bad" role="alert">Not allowed.</p>':"")+'<button class="btn dark wide" data-act="teamKey">Open team page</button><p class="muted">Team members only.</p></div></div>';
   const tab=ui.tab.team;
   const top='<div class="panel" style="padding-bottom:0"><label class="check"><input type="checkbox" data-act="demoToggle"'+(ui.showDemo?" checked":"")+'><span>Include demo data (names ending in “(dummy)”)</span></label></div>';
   if(tab==="campaigns")return top+teamCampaigns();
@@ -461,7 +467,7 @@ function teamCampaigns(){
     return '<div class="card"><div class="row">'+av(b.brand_name,b.brand_name,"sq")+'<div class="grow"><b>'+esc(b.brand_name)+'</b><p class="muted">'+esc(b.product)+' · '+(b.is_barter?"Barter "+inr(b.barter_value_inr):inr(b.fee_inr))+' · '+esc(b.creators_wanted)+' creators</p></div></div>'+
      '<div class="chips"><span class="info">'+esc(b.target_niche)+'</span><span class="info">'+esc(b.target_city)+'</span><span class="info">'+esc(b.target_age_band)+'</span><span class="info">Code '+esc(b.brand_token)+'</span></div>'+
      '<p class="muted">Ranked by audience fit. Follower count is never used.</p>'+
-     r.map(x=>{const inv=invited.has(x.c.handle);return '<div class="rank"><input type="checkbox" aria-label="Pick @'+esc(x.c.handle)+'" data-act="pick" data-b="'+esc(b.id)+'" data-v="'+esc(x.c.handle)+'"'+(inv?" disabled checked":picks.has(x.c.handle)?" checked":"")+'>'+av(x.c.handle,x.c.handle)+'<div style="min-width:0"><b>@'+esc(x.c.handle)+'</b> '+(inv?'<span class="pill locked">Invited</span>':'')+'<ul class="reasons y">'+x.yes.map(y=>'<li>'+esc(y)+'</li>').join("")+'</ul><ul class="reasons n">'+x.no.map(y=>'<li>'+esc(y)+'</li>').join("")+'</ul></div><span class="score">'+x.score+'</span></div>';}).join("")+
+     r.map(x=>{const inv=invited.has(x.c.handle);return '<div class="rank"><input type="checkbox" aria-label="Pick @'+esc(x.c.handle)+'" data-act="pick" data-b="'+esc(b.id)+'" data-v="'+esc(x.c.handle)+'"'+(inv?" disabled checked":picks.has(x.c.handle)?" checked":"")+'>'+av(x.c.handle,x.c.handle)+'<div style="min-width:0"><b>@'+esc(x.c.handle)+'</b> '+(inv?'<span class="pill locked">Invited</span>':'')+(x.c.verified_at?'<span class="muted" style="display:block">Insights verified on '+fmtD(x.c.verified_at)+'</span>':'')+'<ul class="reasons y">'+x.yes.map(y=>'<li>'+esc(y)+'</li>').join("")+'</ul><ul class="reasons n">'+x.no.map(y=>'<li>'+esc(y)+'</li>').join("")+'</ul></div><span class="score">'+x.score+'</span></div>';}).join("")+
      '<button class="btn primary wide" data-act="invite" data-v="'+esc(b.id)+'"'+(picks.size?"":" disabled")+'>Invite selected ('+picks.size+')</button></div>';
   }).join("")+'</div>';
 }
@@ -471,8 +477,8 @@ function fitMsg(o){
 }
 function contractMsg(o,side){
   const b=briefOf(o),link=ORIGIN+"/deal/"+o.id+"?t="+(side==="creator"?o.creator_token:o.brand_token);
-  return side==="creator"?"Hi @"+o.creator_id+", your contract with "+plain(b.brand_name)+" is ready on Mingle. Please read it and confirm here: "+link+". Terms lock only when you and the brand both confirm."
-    :"Hi "+firstName(b.contact_name)+", your contract with @"+o.creator_id+" is ready on Mingle. Please read it and confirm here: "+link+". Terms lock only when you and the creator both confirm.";
+  return side==="creator"?"Hi @"+o.creator_id+", your agreed terms with "+plain(b.brand_name)+" are ready on Mingle. Please read it and confirm here: "+link+". Terms lock only when you and the brand both confirm."
+    :"Hi "+firstName(b.contact_name)+", your agreed terms with @"+o.creator_id+" are ready on Mingle. Please read it and confirm here: "+link+". Terms lock only when you and the creator both confirm.";
 }
 function teamOffers(){
   let list=rows("offers").filter(vis).sort((a,b)=>b.created_at.localeCompare(a.created_at));
@@ -484,7 +490,7 @@ function teamOffers(){
     const b=briefOf(o),c=byHandle(o.creator_id)||{handle:o.creator_id},t=terms(o,b),f=fit(c,t),st=statusLabel(o),m=mins(o.created_at);
     const crs=rows("change_requests").filter(r=>r.offer_id===o.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
     let actions='';
-    if(!isContract(o)&&o.status!=="declined")actions='<div class="btnrow"><button class="btn sm" data-act="fitMsg" data-v="'+o.id+'">Copy fit message</button><button class="btn sm dark" data-act="makeContract" data-v="'+o.id+'">Create contract</button></div>';
+    if(!isContract(o)&&o.status!=="declined")actions='<div class="btnrow"><button class="btn sm" data-act="fitMsg" data-v="'+o.id+'">Copy fit message</button><button class="btn sm dark" data-act="makeContract" data-v="'+o.id+'">Write up terms</button></div>';
     if(o.status==="change_requested"){
       const e=D("edit-"+o.id);if(e.fee_inr==null)Object.assign(e,{fee_inr:t.fee_inr,post_date:t.post_date,payment_days:String(t.payment_days),revision_rounds:String(t.revision_rounds)});
       actions='<p class="status warn">'+esc(crs[0]?crs[0].side+" asked: "+crs[0].field+". “"+crs[0].note+"”":"Change asked")+'</p><div class="row2">'+F("edit-"+o.id,"fee_inr","Fee","number",{hint:"₹"})+F("edit-"+o.id,"post_date","Post date","date")+'</div><div class="row2">'+F("edit-"+o.id,"payment_days","Pay within","select",{options:PAYDAYS})+F("edit-"+o.id,"revision_rounds","Revisions","select",{options:[0,1,2,3]})+'</div><button class="btn sm dark" data-act="resend" data-v="'+o.id+'">Update terms and re-send</button>';
@@ -545,7 +551,7 @@ const act={
   editRules(){const me=meC();ui.draft.setup={name:me.name,handle:me.handle,whatsapp:me.whatsapp,niche:me.niche,followers:me.followers,offers_per_month:me.offers_per_month,top_city:me.top_city,top_city_share:me.top_city_share,age_band:me.age_band,min_fee_inr:me.min_fee_inr,barter_rule:me.barter_rule,barter_floor_inr:me.barter_floor_inr,blocked:(me.blocked_categories||[]).slice(),max_pay_days:String(me.max_pay_days),paid_ads_extra:me.paid_ads_extra,consent:me.consent};ui.editRules=true;render();window.scrollTo(0,0);},
   cancelEdit(){ui.editRules=false;delete ui.draft.setup;ui.err={};render();},
   signOut(){ui.token=null;store("mingle.token",null);ui.justSetup=false;load(null);go("/");render();},
-  async interested(d){if(await rpc("offer_interested",{p_token:ui.token,p_offer:d.v})){ev("offer_accepted",{offer_id:d.v});toast("Sent. Contract within 12 hours.");}await refresh();},
+  async interested(d){if(await rpc("offer_interested",{p_token:ui.token,p_offer:d.v})){ev("offer_accepted",{offer_id:d.v});toast("Sent. Agreed terms within 12 hours.");}await refresh();},
   async decline(d){const o=all("offers")[d.v],b=briefOf(o);ui.msg["decline:"+d.v]="Hi "+firstName(b.contact_name)+", thank you for thinking of me for "+b.product+". It isn't the right fit for my audience right now, so I'll pass this time. Happy to hear about future campaigns.";
     if(await rpc("offer_decline",{p_token:ui.token,p_offer:d.v}))ev("offer_declined",{offer_id:d.v});await refresh();},
   copy(d){const text=ui.msg[d.v]||"";if(d.v==="reply")ev("link_copied",{});
@@ -611,8 +617,9 @@ const act={
     delete ui.picks[d.v];await refresh();
   },
   offFilter(d){ui.offFilter=d.v;render();},
+  tip(d){if(ui.tips.has(d.v))ui.tips.delete(d.v);else{ui.tips.add(d.v);ev("term_explained",{term:/rev/.test(d.v)?"revisions":"usage",side:ui.deal?ui.dealSide:ui.role});}render();},
   async fitMsg(d){const o=all("offers")[d.v];ui.msg["fit:"+d.v]=fitMsg(Object.assign({id:d.v},o));render();if(o.status==="new"){await rpc("team_offer",{p_key:teamKey,p_offer:d.v,p_action:"screen",p_terms:null});await refresh();}},
-  async makeContract(d){if(await rpc("team_offer",{p_key:teamKey,p_offer:d.v,p_action:"contract",p_terms:null})){ev("contract_sent",{offer_id:d.v});toast("Contract ready. Send each side its message.");}await refresh();},
+  async makeContract(d){if(await rpc("team_offer",{p_key:teamKey,p_offer:d.v,p_action:"contract",p_terms:null})){ev("contract_sent",{offer_id:d.v});toast("Agreed terms ready. Send each side its message.");}await refresh();},
   async resend(d){const e=D("edit-"+d.v);
     if(await rpc("team_offer",{p_key:teamKey,p_offer:d.v,p_action:"resend",p_terms:{fee_inr:Number(e.fee_inr),post_date:e.post_date,payment_days:Number(e.payment_days),revision_rounds:Number(e.revision_rounds)}})){ev("contract_sent",{offer_id:d.v,resent:true});toast("Updated terms sent");}
     delete ui.draft["edit-"+d.v];await refresh();},
