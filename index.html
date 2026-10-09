@@ -9,17 +9,18 @@
 </head><body>
 <div class="app" id="app">
   <header class="top">
-    <button class="brandmark" data-act="home" aria-label="Mingle home"><span class="wordmark">Mingle</span><span class="ver">BETA</span></button>
+    <button class="brandmark" data-act="home" aria-label="Mingle home"><span class="wordmark">Mingle</span></button>
     <div class="role" role="group" aria-label="Choose your side">
       <button data-act="role" data-v="creator" aria-pressed="false">Creator</button>
       <button data-act="role" data-v="brand" aria-pressed="false">Brand</button>
     </div>
   </header>
-  <p class="banner" id="banner">Connecting to Mingle…</p>
+  <p class="banner" id="banner" hidden></p>
   <main id="view" aria-live="polite"></main>
   <footer class="foot"><p>Mingle is an ISB student project. A person on our team reads every brief. These are agreed terms, not a legal contract.</p><p><a href="/team" data-act="role" data-v="team">Team page</a></p></footer>
 </div>
 <nav class="tabbar" id="tabbar" aria-label="Main" hidden></nav>
+<div id="sheet" hidden></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="/app.js" defer></script>

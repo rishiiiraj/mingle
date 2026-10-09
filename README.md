@@ -18,11 +18,15 @@ Open a terminal in this folder and run `npx serve .`, then open the address it p
 ## Deploy changes
 The Vercel project "mingle" is connected to this repository. Every push to `main` deploys to https://mingle-alpha.vercel.app automatically, usually within a minute. Work on a branch and open a pull request if you want a preview link before it goes live.
 
+## Sample data
+Riya Malhotra (code riya-demo) and the brands around her are sample data (demo = true in the database). Anyone can put them back to their starting point from "Reset the sample data" on the home page, which runs reset_demo(). It never deletes: extra sample rows are archived. Briefs sent to a sample creator are sample data too, so trying Mingle never touches the pilot numbers.
+
 ## Routes
 - /                   home: pick creator or brand
 - /creator, /brand    each side's start page
 - /c/<handle>         brand brief form for a creator
 - /me/<code>          a creator's private offers
-- /deal/<id>?t=<code> contract, opened by either side's code
+- /deal/<id>?t=<code> a deal: review the seven terms, confirm, post, payment
+- /track/<code>       a brand's brief tracker
 - /brief              campaign brief
 - /team               team page (needs the team key): Pilot metrics, Verify, Campaigns, Deals, Links
