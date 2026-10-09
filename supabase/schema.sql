@@ -1,3 +1,5 @@
+-- Mingle MVP1 schema. After this file, run supabase/migrations/*.sql in date order (they add rates by format,
+-- deliverable counts, decline reasons, offer type, after-filming changes and posted/paid stages).
 -- Mingle MVP1 schema. The browser never reads tables directly: row level security is on with no policies,
 -- and every read or write goes through a function below that checks the right code first.
 

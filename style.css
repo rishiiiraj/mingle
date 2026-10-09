@@ -145,6 +145,8 @@ input[readonly]{opacity:.7}
 .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 label.radio,label.check{display:flex;gap:10px;align-items:flex-start;font-weight:400;font-size:.92rem;margin:0;padding:4px 0;cursor:pointer}
 label.radio input,label.check input{margin-top:3px;width:18px;height:18px;flex:none;accent-color:var(--g3)}
+.rates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.rates label{font-weight:400;font-size:.84rem}
 .counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
 .counter{display:flex;align-items:center;justify-content:space-between;gap:6px;border:1px solid var(--line);border-radius:12px;padding:6px 6px 6px 12px;background:var(--surface);min-width:0}
 .counter>span{font-size:.86rem;font-weight:700;min-width:0;overflow-wrap:anywhere}

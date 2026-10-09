@@ -70,11 +70,18 @@ const ANON=(()=>{let a=recall("mingle.anon");if(!a){a="a-"+Date.now().toString(3
 function terms(o,b){return Object.assign({},b||{},(o&&o.terms)||{});}
 const dueDate=t=>t.is_barter||!t.post_date?null:addDays(t.post_date,t.payment_days);
 const feeTxt=t=>t.is_barter?"Barter, product worth "+inr(t.barter_value_inr):inr(t.fee_inr);
+// The fee a creator asks for a brief: each format's rate times how many the brand wants (mirrors fee_floor in the database).
+// A reel or UGC video without its own rate uses the minimum fee; briefs without a format breakdown use the minimum fee.
+function feeFloor(c,b){
+  const cnt=b.deliverables_counts||{},r=c.rates||{};
+  if(!FORMATS.some(f=>Number(cnt[f[0]])>0))return Number(c.min_fee_inr)||0;
+  return FORMATS.reduce((a,[k])=>a+(Number(cnt[k])||0)*(Number(r[k])||(k==="reel"||k==="ugc"?Number(c.min_fee_inr)||0:0)),0);
+}
 function fit(c,b){
-  const miss=[],chk=[];
+  const miss=[],chk=[],floor=feeFloor(c,b),multi=FORMATS.filter(f=>Number((b.deliverables_counts||{})[f[0]])>0).length>1||FORMATS.some(f=>Number((b.deliverables_counts||{})[f[0]])>1);
   const blocked=(c.blocked_categories||[]).map(x=>String(x).toLowerCase());
   if(blocked.includes(String(b.category||"").toLowerCase()))miss.push(b.category+" is on your list of things you don't promote");
-  if(!b.is_barter&&Number(b.fee_inr)<Number(c.min_fee_inr))miss.push(inr(b.fee_inr)+" is below your "+inr(c.min_fee_inr)+" minimum");
+  if(!b.is_barter&&Number(b.fee_inr)<floor)miss.push(inr(b.fee_inr)+" is below your "+inr(floor)+(multi?" for "+delivText(b.deliverables_counts):" minimum"));
   if(b.is_barter&&c.barter_rule==="never")miss.push("Barter only, and you don't take barter");
   if(b.is_barter&&c.barter_rule!=="never"&&Number(b.barter_value_inr)<Number(c.barter_floor_inr||0))miss.push("Barter product worth "+inr(b.barter_value_inr)+" for "+b.deliverables+". Your minimum is "+inr(c.barter_floor_inr));
   if(b.usage_type==="paid"&&c.paid_ads_extra)chk.push("Wants to run it as a paid ad for "+b.usage_days+" days. You charge extra for that");
@@ -89,8 +96,8 @@ function match(c,b){
   if(eq(c.niche,b.target_niche)){s+=40;yes.push("Niche "+c.niche);}else no.push("Niche "+(c.niche||"not set"));
   if(eq(c.top_city,b.target_city)){s+=25;yes.push("Top city "+c.top_city+" ("+(c.top_city_share||0)+"%)");}else no.push("Top city "+(c.top_city||"not set"));
   if(eq(c.age_band,b.target_age_band)){s+=15;yes.push("Age "+c.age_band);}else no.push("Age "+(c.age_band||"not set"));
-  const budget=b.is_barter?Number(b.barter_value_inr):Number(b.fee_inr);
-  if(Number(c.min_fee_inr)<=budget){s+=10;yes.push("Rate "+inr(c.min_fee_inr)+" within budget");}else no.push("Rate "+inr(c.min_fee_inr)+", over the "+inr(budget)+" budget");
+  const budget=b.is_barter?Number(b.barter_value_inr):Number(b.fee_inr),floor=feeFloor(c,b);
+  if(floor<=budget){s+=10;yes.push("Rate "+inr(floor)+" within budget");}else no.push("Rate "+inr(floor)+", over the "+inr(budget)+" budget");
   const tot=Number(c.total_posts)||0,on=Number(c.on_time_posts)||0;
   if(tot>0){const p=Math.round(10*on/tot);s+=p;(p>=8?yes:no).push("Posted on time "+on+" of "+tot);}else{s+=5;no.push("New: no deals on record yet");}
   return{score:s,yes,no};
@@ -323,7 +330,8 @@ function setupForm(edit,me){
     F("setup","age_band","Main age band","select",{options:AGES})+cityList+
   '</div>'+
   '<div class="card"><h3><span class="stepn">3</span>Your rules</h3><p class="muted">Mingle checks every offer against these. Offers that miss are shown as advice; you always decide.</p>'+
-    F("setup","min_fee_inr","Lowest fee per reel","number",{hint:"₹",ph:"8000"})+
+    '<div class="field"><span class="lbl">Your rates <span class="hint">lowest fee for each, in ₹. Only the reel is required</span></span><div class="rates">'+
+      F("setup","min_fee_inr","Reel","number",{ph:"8000"})+F("setup","rate_story","Story","number",{ph:"optional"})+F("setup","rate_post","Post or carousel","number",{ph:"optional"})+F("setup","rate_ugc","UGC video","number",{ph:"optional"})+'</div></div>'+
     '<div class="field"><span class="lbl">Barter</span>'+RD("setup","barter_rule","value","I take barter if the product is worth at least",true)+(f.barter_rule==="value"?F("setup","barter_floor_inr","Barter minimum","number",{hint:"₹",ph:"2000"}):"")+RD("setup","barter_rule","never","I never take barter",true)+'</div>'+
     '<div class="field"><span class="lbl">Categories I don\'t promote</span><div class="chips">'+chips.map(x=>'<button type="button" class="chip block" data-act="toggleBlock" data-v="'+esc(x)+'" aria-pressed="'+(f.blocked||[]).includes(x)+'">'+esc(x)+'</button>').join("")+'</div>'+
     '<div class="row"><input type="text" data-f="setup.custom" aria-label="Add your own category" placeholder="Add your own" value="'+esc(f.custom||"")+'"><button type="button" class="btn sm" data-act="addBlock">Add</button></div></div>'+
@@ -410,7 +418,7 @@ function creatorProfile(me){
   const deals=rows("offers").filter(o=>o.creator_id===me.handle);
   return '<div class="panel form"><div class="prof">'+av(me.handle,me.handle,"lg")+'<div class="stats"><div><b>'+Number(me.followers||0).toLocaleString("en-IN")+'</b><span>followers</span></div><div><b>'+deals.length+'</b><span>offers</span></div><div><b>'+(me.total_posts?me.on_time_posts+"/"+me.total_posts:"New")+'</b><span>on time</span></div></div></div>'+
   '<div><b>'+esc(me.name||me.handle)+'</b> <span class="muted">@'+esc(me.handle)+(me.verified?'<span class="tick" aria-label="verified">✓</span>':'')+'</span><p class="muted">'+esc(me.niche)+' · Top city '+esc(me.top_city||"not set")+' '+(me.top_city_share?esc(me.top_city_share)+"%":"")+' · '+esc(me.age_band||"")+'</p></div>'+
-  '<div class="hl">'+[["Min "+inr(me.min_fee_inr),"Fee"],[me.barter_rule==="never"?"No barter":"≥ "+inr(me.barter_floor_inr),"Barter"],["≤ "+me.max_pay_days+" days","Paid"],[me.paid_ads_extra?"Extra":"Included","Paid ads"]].map(h=>'<div class="hlc"><div class="c">'+esc(h[0])+'</div><span>'+h[1]+'</span></div>').join("")+'</div>'+
+  '<div class="hl">'+[["Reel "+inr(me.min_fee_inr),"Fee"]].concat(FORMATS.slice(1).filter(f=>Number((me.rates||{})[f[0]])>0).map(f=>[inr(me.rates[f[0]]),f[1]])).concat([[me.barter_rule==="never"?"No barter":"≥ "+inr(me.barter_floor_inr),"Barter"],["≤ "+me.max_pay_days+" days","Paid"],[me.paid_ads_extra?"Extra":"Included","Paid ads"]]).map(h=>'<div class="hlc"><div class="c">'+esc(h[0])+'</div><span>'+h[1]+'</span></div>').join("")+'</div>'+
   ((me.blocked_categories||[]).length?'<div class="field"><span class="lbl">I don\'t promote</span><div class="chips">'+me.blocked_categories.map(x=>'<span class="info">'+esc(x)+'</span>').join("")+'</div></div>':"")+
   '<button class="btn dark wide" data-act="editRules">Edit my rules</button><button class="btn wide" data-act="signOut">Sign out on this phone</button></div>';
 }
@@ -446,7 +454,7 @@ function briefNeeds(f,camp){
 }
 function briefPayload(f){
   const note=String(f.deliv_note||"").trim(),d=delivText(f.cnt||{});
-  return {brand_name:f.brand_name,website:f.website,contact_name:f.contact_name,contact_role:f.contact_role,contact_channel:f.contact_channel,product:f.product,category:f.category,deliverables:d+(note?" ("+note+")":""),
+  return {brand_name:f.brand_name,website:f.website,contact_name:f.contact_name,contact_role:f.contact_role,contact_channel:f.contact_channel,product:f.product,category:f.category,deliverables:d+(note?" ("+note+")":""),deliverables_counts:Object.assign({},f.cnt||{}),
     fee_inr:Number(f.fee_inr)||0,is_barter:f.pay==="barter",barter_value_inr:Number(f.barter_value_inr)||0,creators_wanted:Number(f.creators_wanted)||1,usage_type:f.usage_type,usage_days:Number(f.usage_days)||0,
     revision_rounds:Number(f.revision_rounds)||0,post_date:f.post_date,payment_days:Number(f.payment_days),claims:f.claims||"",target_niche:f.target_niche,target_city:f.target_city,target_age_band:f.target_age_band};
 }
@@ -507,7 +515,7 @@ function dealView(){
     const crs=rows("change_requests").filter(r=>r.offer_id===o.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
     out+='<p class="status warn">Changed after confirmation. Please review.</p>'+(crs[0]?'<p class="muted">The '+esc(crs[0].side)+' asked to change <b>'+esc(crs[0].field)+'</b>: “'+esc(crs[0].note)+'”. Our team updates the terms and sends them back to both of you.</p>':"");
   }
-  if(o.status==="locked")out+='<p class="status ok">Terms locked on '+fmtD(o.locked_at)+'. You can film now.'+(due&&side==="creator"?' Got paid? Tell us on WhatsApp and we log it.':'')+'</p>';
+  if(o.status==="locked")out+='<p class="status ok">Terms locked on '+fmtD(o.locked_at)+'.'+(o.paid_at?' Paid on '+fmtD(o.paid_at)+'.':o.posted_at?' Posted on '+fmtD(o.posted_at)+'.'+(due&&side==="creator"?' Got paid? Tell us on WhatsApp and we log it.':''):' You can film now.')+'</p>';
   out+='<div class="card"><dl class="terms">'+
    '<dt>You make</dt><dd>'+esc(t.deliverables)+'</dd>'+
    '<dt>Product</dt><dd>'+esc(t.product)+'</dd>'+
@@ -519,7 +527,8 @@ function dealView(){
    '<dt>Claims asked</dt><dd'+(String(t.claims||"").trim()?' class="flag"':'')+'>'+(String(t.claims||"").trim()?esc(t.claims):"None")+'</dd>'+
    '<dt>Creator</dt><dd>@'+esc(c.handle)+(c.verified_at?'<span class="muted" style="display:block;font-weight:400">Audience verified on '+fmtD(c.verified_at)+'</span>':'')+'</dd>'+
    '<dt>Brand contact</dt><dd>'+esc(b.contact_name)+(b.contact_role?", "+esc(b.contact_role):"")+'</dd></dl></div>'+
-  '<ul class="steps"><li class="done"><span class="dot"></span>Terms sent'+(o.contract_sent_at?' on '+fmtD(o.contract_sent_at):'')+'</li><li class="'+(o.creator_confirmed_at?"done":"")+'"><span class="dot"></span>'+(o.creator_confirmed_at?"Creator confirmed on "+fmtD(o.creator_confirmed_at):"Waiting for the creator")+'</li><li class="'+(o.brand_confirmed_at?"done":"")+'"><span class="dot"></span>'+(o.brand_confirmed_at?"Brand confirmed on "+fmtD(o.brand_confirmed_at):"Waiting for the brand")+'</li><li class="'+(o.status==="locked"?"done":"")+'"><span class="dot"></span>'+(o.status==="locked"?"Locked. Film and post on "+fmtD(t.post_date):"Locks when both confirm")+'</li></ul>';
+  '<ul class="steps"><li class="done"><span class="dot"></span>Terms sent'+(o.contract_sent_at?' on '+fmtD(o.contract_sent_at):'')+'</li><li class="'+(o.creator_confirmed_at?"done":"")+'"><span class="dot"></span>'+(o.creator_confirmed_at?"Creator confirmed on "+fmtD(o.creator_confirmed_at):"Waiting for the creator")+'</li><li class="'+(o.brand_confirmed_at?"done":"")+'"><span class="dot"></span>'+(o.brand_confirmed_at?"Brand confirmed on "+fmtD(o.brand_confirmed_at):"Waiting for the brand")+'</li><li class="'+(o.status==="locked"?"done":"")+'"><span class="dot"></span>'+(o.status==="locked"?"Locked. Film and post on "+fmtD(t.post_date):"Locks when both confirm")+'</li>'+
+   (o.status==="locked"?'<li class="'+(o.posted_at?"done":"")+'"><span class="dot"></span>'+(o.posted_at?"Posted on "+fmtD(o.posted_at):"Post goes live")+'</li>'+(t.is_barter?'':'<li class="'+(o.paid_at?"done":"")+'"><span class="dot"></span>'+(o.paid_at?"Paid on "+fmtD(o.paid_at):"Paid by "+fmtD(due))+'</li>'):'')+'</ul>';
   const mine=o[side+"_confirmed_at"];
   if(o.status!=="locked"&&o.status!=="change_requested")out+=mine?'<p class="status info">You confirmed on '+fmtD(mine)+'. Waiting for the '+other+'.</p>':
     (side==="creator"?CK("cf","filming","I have already started filming"):"")+'<button class="btn primary wide" data-act="confirm"'+(ui.busy?" disabled":"")+'>Confirm these terms</button><p class="muted">These are agreed terms, not a legal contract. They lock only when both sides confirm.</p>';
@@ -547,6 +556,12 @@ function dealLog(){
   rows("events").filter(e=>(e.name==="deal_stage_updated"||e.name==="payment_marked_paid")&&e.props&&e.props.deal_id).sort((a,b)=>a.created_at.localeCompare(b.created_at)).forEach(e=>{
     const d=m[e.props.deal_id]||(m[e.props.deal_id]={});
     if(e.name==="payment_marked_paid")d.paid=e.props;else if(e.props.to_stage==="posted")d.posted=e.props;
+  });
+  // the deal row is the record; events fill in details such as days late
+  rows("offers").forEach(o=>{
+    if(!o.posted_at&&!o.paid_at)return;const d=m[o.id]||(m[o.id]={}),due=dueDate(terms(o,briefOf(o)));
+    if(o.posted_at&&!d.posted)d.posted={posted_date:String(o.posted_at).slice(0,10)};
+    if(o.paid_at&&!d.paid){const pd=String(o.paid_at).slice(0,10);d.paid={paid_date:pd,days_late:due?Math.round((T(pd)-T(due))/DAY):0,amount_matches:o.paid_amount_matches!==false};}
   });
   return m;
 }
@@ -581,7 +596,7 @@ function pilotMetrics(){
   M.push({goal:"Goal 1 · Counter-metric",name:"Fits declined ÷ Fits viewed",n:fitsDeclined.length,d:fitsViewed.length,target:.25,floor:.5,lower:true,targetTxt:"≤ 1 in 4 by Wed 4 Nov",act:"Above 1 in 2: stop labelling offers Fits and show reasons only. Decline reasons are in the offer_declined events.",owner:"Archin, Mon and Thu"});
   const fast=taken.filter(o=>o.locked_at&&T(o.locked_at)-T(briefOf(o).created_at)<=7*DAY);
   M.push({goal:"Goal 2 · Acquire",name:"Deals locked within 7 days of the brief, before filming",n:fast.length,d:taken.length,target:.75,floor:.5,targetTxt:"≥ 6 of 8 by Wed 4 Nov",act:"Under 4 of 8: brands will not confirm on screen; rethink locking in the app.",owner:"Aarushi, after each deal"});
-  const inApp=chg.length,afterFilm=chg.filter(r=>/\(after filming\)/.test(r.note||"")).length;
+  const afterF=r=>r.after_filming||/\(after filming\)/.test(r.note||""),inApp=chg.length,afterFilm=chg.filter(afterF).length;
   M.push({goal:"Goal 2 · Retain",name:"Changes raised in Mingle ÷ all changes",n:inApp,d:null,count:true,targetTxt:"≥ 3 in 4 by Mon 9 Nov",act:inApp+" raised in Mingle"+(afterFilm?", "+afterFilm+" after filming":"")+". Add the changes creators report at the check-in by hand to get the ratio.",owner:"Aarushi, weekly"});
   const locked=of.filter(o=>o.status==="locked");
   const dueNow=locked.filter(o=>{const d=dueDate(terms(o,briefOf(o)));return d&&T(d)<now;});
@@ -596,7 +611,7 @@ function pilotMetrics(){
   M.push({goal:"Goal 3 · Monetise",name:"Campaign briefs with a locked deal within 7 days of the ranked list",n:campLocked.length,d:camps.length,target:.75,floor:.5,targetTxt:"≥ 3 of 4 by Wed 4 Nov",act:"Invites from our top 5: "+pct(ranks.filter(r=>r>0&&r<=5).length,ranks.length)+" of "+ranks.length+". If brands pass over our top 5, show verified-on dates and retest.",owner:"Samuel, Mon and Thu"});
   const active=ver.filter(c=>of.some(o=>o.creator_id===c.handle)),withLock=active.filter(c=>locked.some(o=>o.creator_id===c.handle));
   const lockedActive=locked.filter(o=>active.some(c=>c.handle===o.creator_id));
-  const broken=locked.filter(o=>chg.some(r=>r.offer_id===o.id&&/\(after filming\)/.test(r.note||""))||(log[o.id]&&log[o.id].paid&&Number(log[o.id].paid.days_late)>0));
+  const broken=locked.filter(o=>chg.some(r=>r.offer_id===o.id&&afterF(r))||(log[o.id]&&log[o.id].paid&&Number(log[o.id].paid.days_late)>0));
   const nsm={value:active.length?lockedActive.length/active.length:0,locked:lockedActive.length,active:active.length,breadth:[withLock.length,active.length],frequency:withLock.length?lockedActive.length/withLock.length:0,depth:[atMin.length,taken.length],broken:[broken.length,locked.length]};
   const fl=user.filter(e=>!(e.props||{}).demo||ui.showDemo);
   const opened=new Set(fl.filter(e=>e.name==="page_viewed"&&e.props.page==="brief_link").map(e=>e.props.anon_id+"|"+e.props.creator_handle)).size;
@@ -689,7 +704,7 @@ function teamOffers(){
         (t.is_barter?'':'<div class="row2">'+F("paid-"+o.id,"date","Paid on","date")+'<div class="field"><span class="lbl">Due</span><p>'+fmtD(due)+'</p></div></div>'+CK("paid-"+o.id,"match","Amount matches the agreed fee")+'<button class="btn sm dark" data-act="markPaid" data-v="'+o.id+'">Log payment</button>'))+'</div>';
     }
     return '<div class="card"><div class="row">'+av(c.handle,c.handle)+'<div class="grow"><b>@'+esc(c.handle)+' ← '+esc(b.brand_name)+'</b><p class="muted">'+esc(b.product)+' · '+(b.source==="campaign"?"Campaign invite"+(o.match_score!=null?", score "+o.match_score:""):"Creator link")+' · <span class="'+(o.status==="new"&&m>240?"amber":"")+'">'+ago(o.created_at)+'</span></p></div><span class="pill '+st[1]+'">'+st[0]+'</span></div>'+
-      '<div class="row"><span class="pill '+f.result+'">'+({fits:"Fits",check:"Check",misses:"Misses"})[f.result]+'</span>'+(o.interested&&!isContract(o)?'<span class="pill info">Creator said yes</span>':'')+'</div><p class="payline">'+feeTxt(t)+(due?' · paid by '+fmtD(due):'')+'</p><ul class="reasons">'+f.reasons.map(r=>'<li>'+esc(r)+'</li>').join("")+'</ul>'+
+      '<div class="row"><span class="pill '+f.result+'">'+({fits:"Fits",check:"Check",misses:"Misses"})[f.result]+'</span>'+(o.interested&&!isContract(o)?'<span class="pill info">Creator said yes</span>':'')+(o.decline_reason?'<span class="info">Declined: '+esc((DECLINE.find(x=>x[0]===o.decline_reason)||[0,o.decline_reason])[1])+'</span>':'')+'</div><p class="payline">'+feeTxt(t)+(due?' · paid by '+fmtD(due):'')+'</p><ul class="reasons">'+f.reasons.map(r=>'<li>'+esc(r)+'</li>').join("")+'</ul>'+
       actions+(ui.msg["fit:"+o.id]?msgBox("fit:"+o.id,ui.msg["fit:"+o.id]):"")+(isContract(o)&&o.status!=="locked"?'<p class="group-h">Send to the creator</p>'+msgBox("con:"+o.id,ui.msg["con:"+o.id]=contractMsg(o,"creator"))+'<p class="group-h">Send to the brand</p>'+msgBox("conb:"+o.id,ui.msg["conb:"+o.id]=contractMsg(o,"brand")):"")+'</div>';
   }).join(""):'<p class="muted">Nothing here.</p>')+'</div>';
 }
@@ -700,7 +715,7 @@ function teamLog(){
   return '<div class="panel wide"><div class="card"><h3>Log a link send</h3><p class="muted">When a creator posts a screenshot of sending their link in our group.</p>'+F("lg","creator","Creator","select",{options:cs})+F("lg","brand","Brand handle","text",{ph:"brand handle"})+
   '<div class="field"><span class="lbl">Offer in the DM</span><div class="chips">'+OFFER_TYPES.map(([k,l])=>chipPick("lgType",k,l,lg.type===k)).join("")+'</div></div>'+errBox("lg")+'<button class="btn dark wide" data-act="logSendTeam">Log send</button></div>'+
   '<div class="card"><h3>Link sends ('+sends.length+')</h3><table class="trk"><thead><tr><th>Creator → brand</th><th>Outcome</th></tr></thead><tbody>'+
-  sends.map(s=>'<tr><td>@'+esc(s.creator_id)+' → @'+esc(s.brand_handle)+'<br><span class="muted">'+ago(s.sent_at)+'</span></td><td><select aria-label="Outcome" data-act="outcome" data-v="'+esc(s.id)+'">'+[["","Waiting"],["filled","Brief sent"],["replied_in_dm","Replied in DM"],["went_quiet","Went quiet"]].map(x=>'<option value="'+x[0]+'"'+((s.outcome||"")===x[0]?" selected":"")+'>'+x[1]+'</option>').join("")+'</select></td></tr>').join("")+'</tbody></table></div>'+
+  sends.map(s=>'<tr><td>@'+esc(s.creator_id)+' → @'+esc(s.brand_handle)+'<br><span class="muted">'+ago(s.sent_at)+(s.offer_type&&s.offer_type!=="unclear"?' · '+esc(s.offer_type)+' offer':'')+'</span></td><td><select aria-label="Outcome" data-act="outcome" data-v="'+esc(s.id)+'">'+[["","Waiting"],["filled","Brief sent"],["replied_in_dm","Replied in DM"],["went_quiet","Went quiet"]].map(x=>'<option value="'+x[0]+'"'+((s.outcome||"")===x[0]?" selected":"")+'>'+x[1]+'</option>').join("")+'</select></td></tr>').join("")+'</tbody></table></div>'+
   '<div class="card"><h3>Export</h3><select aria-label="Table" data-f="x.table">'+opt(COLLS,D("x").table||"offers")+'</select><button class="btn wide" data-act="export">Download CSV</button></div></div>';
 }
 function csv(c){
@@ -730,7 +745,8 @@ window.addEventListener("pagehide",()=>abandon("closed"));
 function rulesPayload(f,handle){
   return {handle,name:String(f.name||"").trim(),whatsapp:String(f.whatsapp||"").trim(),niche:f.niche,followers:Number(f.followers)||0,offers_per_month:Number(f.offers_per_month)||0,
     top_city:String(f.top_city||"").trim(),top_city_share:Number(f.top_city_share)||0,age_band:f.age_band,min_fee_inr:Number(f.min_fee_inr)||0,barter_rule:f.barter_rule,
-    barter_floor_inr:Number(f.barter_floor_inr)||0,blocked_categories:f.blocked||[],max_pay_days:Number(f.max_pay_days)||30,paid_ads_extra:!!f.paid_ads_extra,consent:!!f.consent};
+    barter_floor_inr:Number(f.barter_floor_inr)||0,blocked_categories:f.blocked||[],max_pay_days:Number(f.max_pay_days)||30,paid_ads_extra:!!f.paid_ads_extra,consent:!!f.consent,
+    rates:{reel:Number(f.min_fee_inr)||0,story:Number(f.rate_story)||0,post:Number(f.rate_post)||0,ugc:Number(f.rate_ugc)||0}};
 }
 function stageProps(o){const t=terms(o,briefOf(o));return{deal_id:o.id,post_date:t.post_date||null,payment_due_date:dueDate(t),demo:!!o.demo};}
 const act={
@@ -760,12 +776,12 @@ const act={
     try{
       if(edit){await rpc("update_rules",{p_token:ui.token,p});}
       else{const r=await rpc("create_creator",{p});ui.token=r.private_token;store("mingle.token",r.private_token);ui.setup=false;ui.justSetup=true;ui.tab.creator="link";ev("creator_onboarded",{creator_id:handle,niche:p.niche,followers:p.followers>=50000?"50K plus":p.followers>=25000?"25K to 50K":p.followers>=10000?"10K to 25K":"Under 10K"});}
-      ev("rules_saved",{creator_id:handle,min_fee_by_format:{reel:p.min_fee_inr},min_fee_inr:p.min_fee_inr,barter_floor:p.barter_rule==="never"?null:p.barter_floor_inr,barter_rule:p.barter_rule,refused_categories:p.blocked_categories,payment_terms_days:p.max_pay_days,paid_ads_extra:p.paid_ads_extra});
+      ev("rules_saved",{creator_id:handle,min_fee_by_format:p.rates,min_fee_inr:p.min_fee_inr,barter_floor:p.barter_rule==="never"?null:p.barter_floor_inr,barter_rule:p.barter_rule,refused_categories:p.blocked_categories,payment_terms_days:p.max_pay_days,paid_ads_extra:p.paid_ads_extra});
       ui.editRules=false;ui.err={};delete ui.draft.setup;toast(edit?"Rules saved":"You're on Mingle");
     }catch(e){ui.err.setup=e.message;}
     ui.busy=false;render();window.scrollTo(0,0);await refresh();
   },
-  editRules(){const me=meC();ui.draft.setup={name:me.name,handle:me.handle,whatsapp:me.whatsapp,niche:me.niche,followers:me.followers,offers_per_month:me.offers_per_month,top_city:me.top_city,top_city_share:me.top_city_share,age_band:me.age_band,min_fee_inr:me.min_fee_inr,barter_rule:me.barter_rule,barter_floor_inr:me.barter_floor_inr,blocked:(me.blocked_categories||[]).slice(),max_pay_days:String(me.max_pay_days),paid_ads_extra:me.paid_ads_extra,consent:me.consent};ui.editRules=true;render();window.scrollTo(0,0);},
+  editRules(){const me=meC();ui.draft.setup={name:me.name,handle:me.handle,whatsapp:me.whatsapp,niche:me.niche,followers:me.followers,offers_per_month:me.offers_per_month,top_city:me.top_city,top_city_share:me.top_city_share,age_band:me.age_band,min_fee_inr:me.min_fee_inr,barter_rule:me.barter_rule,barter_floor_inr:me.barter_floor_inr,blocked:(me.blocked_categories||[]).slice(),max_pay_days:String(me.max_pay_days),paid_ads_extra:me.paid_ads_extra,consent:me.consent,rate_story:(me.rates||{}).story||"",rate_post:(me.rates||{}).post||"",rate_ugc:(me.rates||{}).ugc||""};ui.editRules=true;render();window.scrollTo(0,0);},
   cancelEdit(){ui.editRules=false;delete ui.draft.setup;ui.err={};render();},
   signOut(){ui.token=null;store("mingle.token",null);ui.justSetup=false;load(null);ui.role="home";go("/");render();},
   async interested(d){const o=all("offers")[d.v]||{};if(await rpc("offer_interested",{p_token:ui.token,p_offer:d.v})){ev("offer_accepted",{offer_id:d.v,fit_status:fit(meC()||{},terms(o,briefOf(o))).result,demo:!!o.demo});toast("Sent. Agreed terms within 12 hours.");}await refresh();},
@@ -774,7 +790,7 @@ const act={
   declineReason(d){if(ui.declining){D("dec")[ui.declining]=d.v;render();}},
   async decline(d){const o=all("offers")[d.v],b=briefOf(o),reason=D("dec")[d.v];if(!o||!reason)return;
     ui.msg["decline:"+d.v]="Hi "+firstName(b.contact_name)+", thank you for thinking of me for "+b.product+". It isn't the right fit for my audience right now, so I'll pass this time. Happy to hear about future campaigns.";
-    if(await rpc("offer_decline",{p_token:ui.token,p_offer:d.v}))ev("offer_declined",{offer_id:d.v,fit_status:fit(meC()||{},terms(o,b)).result,reason,demo:!!o.demo});
+    if(await rpc("offer_decline",{p_token:ui.token,p_offer:d.v,p_reason:reason}))ev("offer_declined",{offer_id:d.v,fit_status:fit(meC()||{},terms(o,b)).result,reason,demo:!!o.demo});
     ui.declining=null;await refresh();},
   copy(d){const text=ui.msg[d.v]||"";if(d.v==="reply")ev("link_copied",{});
     const done=()=>toast("Copied");const fail=()=>toast("Copy is blocked here. Select the text and copy it.");
@@ -782,7 +798,7 @@ const act={
   sendType(d){D("send").type=d.v;render();},
   lgType(d){D("lg").type=d.v;render();},
   async logSendCreator(){const sd=D("send"),h=String(sd.brand||"").replace(/^@/,"").trim();if(!h){toast("Add the brand's handle");return;}
-    if(await rpc("log_send_creator",{p_token:ui.token,p_brand:h})){ev("link_shared",{brand_handle:h,offer_type:sd.type||"unclear",by:"creator"});sd.brand="";toast("Logged. We follow up if they go quiet.");}await refresh();},
+    if(await rpc("log_send_creator",{p_token:ui.token,p_brand:h,p_offer_type:sd.type||"unclear"})){ev("link_shared",{brand_handle:h,offer_type:sd.type||"unclear",by:"creator"});sd.brand="";toast("Logged. We follow up if they go quiet.");}await refresh();},
   async find(){const h=String(D("find").handle||"").toLowerCase().replace(/^@/,"").trim();if(!h)return;
     const c=await rpc("public_creator",{p_handle:h});ui.findTried=true;ui.found=c?c.handle:null;S.creators=c?{[c.handle]:c}:{};
     if(c&&!srecall("mingle.lo."+c.handle))sstore("mingle.lo."+c.handle,String(Date.now()));render();},
@@ -822,8 +838,8 @@ const act={
   toggleChange(){ui.changeOpen=!ui.changeOpen;ui.err={};render();},
   async sendChange(){
     const f=D("chg");if(!f.field)f.field="Fee";if(!String(f.note||"").trim()){ui.err.chg="Still needed: what you need.";render();return;}
-    const o=all("offers")[ui.deal]||{},note=String(f.note).trim()+(f.after?" (after filming)":"");
-    const r=await rpc("deal_change",{p_offer:ui.deal,p_token:ui.dealTok,p_field:f.field,p_note:note});
+    const o=all("offers")[ui.deal]||{},note=String(f.note).trim();
+    const r=await rpc("deal_change",{p_offer:ui.deal,p_token:ui.dealTok,p_field:f.field,p_note:note,p_after_filming:!!f.after});
     if(r&&r.ok){ev("change_requested",{deal_id:ui.deal,offer_id:ui.deal,side:ui.dealSide,reason:f.field,field:f.field,after_filming:!!f.after,demo:!!o.demo});
       if(o.status==="locked")ev("deal_stage_updated",Object.assign(stageProps(Object.assign({id:ui.deal},o)),{from_stage:"terms_locked",to_stage:"terms_draft"}));}
     delete ui.draft.chg;ui.changeOpen=false;ui.err={};await refresh();
@@ -850,14 +866,16 @@ const act={
   async resend(d){const e=D("edit-"+d.v),o=all("offers")[d.v]||{};
     if(await rpc("team_offer",{p_key:teamKey,p_offer:d.v,p_action:"resend",p_terms:{fee_inr:Number(e.fee_inr),post_date:e.post_date,payment_days:Number(e.payment_days),revision_rounds:Number(e.revision_rounds)}})){ev("contract_sent",{offer_id:d.v,resent:true,demo:!!o.demo});toast("Updated terms sent");}
     delete ui.draft["edit-"+d.v];await refresh();},
-  markPosted(d){const o=Object.assign({id:d.v},all("offers")[d.v]),today=new Date().toISOString().slice(0,10);
-    ev("deal_stage_updated",Object.assign(stageProps(o),{from_stage:"terms_locked",to_stage:"posted",posted_date:today}));toast("Logged as posted");setTimeout(refresh,900);},
-  markPaid(d){const o=Object.assign({id:d.v},all("offers")[d.v]),p=D("paid-"+d.v),due=dueDate(terms(o,briefOf(o)));if(!p.date){toast("Add the date it was paid");return;}
+  async markPosted(d){const o=Object.assign({id:d.v},all("offers")[d.v]),today=new Date().toISOString().slice(0,10);
+    if(!await rpc("team_offer",{p_key:teamKey,p_offer:d.v,p_action:"posted",p_terms:{posted_date:today}})){toast("Already logged");return refresh();}
+    ev("deal_stage_updated",Object.assign(stageProps(o),{from_stage:"terms_locked",to_stage:"posted",posted_date:today}));toast("Logged as posted");await refresh();},
+  async markPaid(d){const o=Object.assign({id:d.v},all("offers")[d.v]),p=D("paid-"+d.v),due=dueDate(terms(o,briefOf(o)));if(!p.date){toast("Add the date it was paid");return;}
+    if(!await rpc("team_offer",{p_key:teamKey,p_offer:d.v,p_action:"paid",p_terms:{paid_date:p.date,amount_matches:!!p.match}})){toast("Already logged");return refresh();}
     const late=due?Math.round((T(p.date)-T(due))/DAY):0;
     ev("payment_marked_paid",Object.assign(stageProps(o),{due_date:due,paid_date:p.date,days_late:late,amount_matches:!!p.match,by:"team"}));
-    ev("deal_stage_updated",Object.assign(stageProps(o),{from_stage:"posted",to_stage:"paid"}));toast(late>0?"Logged: paid "+late+" days late":"Logged: paid on time");setTimeout(refresh,900);},
+    ev("deal_stage_updated",Object.assign(stageProps(o),{from_stage:"posted",to_stage:"paid"}));toast(late>0?"Logged: paid "+late+" days late":"Logged: paid on time");await refresh();},
   async logSendTeam(){const f=D("lg"),h=String(f.brand||"").replace(/^@/,"").trim();if(!f.creator||!h){ui.err.lg="Still needed: creator and brand handle.";render();return;}
-    if(await rpc("team_log_send",{p_key:teamKey,p_creator:f.creator,p_brand:h})){ev("link_shared",{creator_id:f.creator,brand_handle:h,offer_type:f.type||"unclear",by:"team"});f.brand="";ui.err={};toast("Logged");}await refresh();},
+    if(await rpc("team_log_send",{p_key:teamKey,p_creator:f.creator,p_brand:h,p_offer_type:f.type||"unclear"})){ev("link_shared",{creator_id:f.creator,brand_handle:h,offer_type:f.type||"unclear",by:"team"});f.brand="";ui.err={};toast("Logged");}await refresh();},
   async outcome(d,el){const prev=all("link_sends")[d.v]||{};if(await rpc("team_outcome",{p_key:teamKey,p_send:d.v,p_outcome:el.value})&&el.value==="went_quiet"&&prev.outcome!=="went_quiet")ev("brand_went_silent",{});await refresh();},
   export(){const c=D("x").table||"offers",text=csv(c);
     const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download="mingle_"+c+".csv";document.body.appendChild(a);a.click();a.remove();},
