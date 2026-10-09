@@ -449,3 +449,44 @@ body.sheet-open{overflow:hidden}
   .briefto{padding-top:28px}
 }
 @media (prefers-reduced-motion:reduce){#view.enter>*,.next,.mini,.walk,.sheet.up,.scrim{animation:none!important}}
+
+/* ---------- polish: bell, chat thread, urgency, history, print ---------- */
+.hright{display:flex;align-items:center;gap:6px}
+.bell{position:relative;min-width:40px;min-height:40px;border-radius:12px}
+.bell:hover{background:var(--surface)}
+.bell .badge{position:absolute;top:2px;right:2px;margin:0;animation:pop .4s ease}
+.notifs{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.nrow{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:10px 12px;cursor:pointer}
+.nrow .grow{display:grid}.nrow b{font-size:.92rem}
+.nrow.need{border-color:color-mix(in srgb,var(--g3) 45%,var(--line));background:color-mix(in srgb,var(--g3) 6%,var(--card))}
+.nrow.need .aicon{background:linear-gradient(135deg,var(--g2),var(--g3));color:#fff}
+.nrow:focus-visible{outline:3px solid var(--link);outline-offset:2px}
+@keyframes bubIn{from{transform:translateY(8px) scale(.97)}to{transform:none}}
+.thread{display:grid;gap:8px}
+.bub{max-width:86%;padding:9px 12px;border-radius:16px;font-size:.9rem;line-height:1.4;display:grid;gap:2px;animation:bubIn .35s ease backwards}
+.bub b{font-size:.78rem;color:var(--muted)}
+.bub i{font-style:normal;font-size:.72rem;color:var(--muted);justify-self:end}
+.bub.in{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px;justify-self:start}
+.bub.out{background:linear-gradient(135deg,var(--g2),var(--g3));color:#fff;border-bottom-right-radius:4px;justify-self:end;animation-delay:.15s}
+.bub.out i{color:rgba(255,255,255,.8)}
+.bub.sys{max-width:100%;justify-self:stretch;display:flex;gap:10px;align-items:flex-start;background:var(--info-soft);border-radius:12px;font-size:.85rem;animation-delay:.3s}
+.bub.sys svg.i{width:18px;height:18px;color:var(--link);flex:none;margin-top:1px}
+.payline.soon{color:var(--warn)}.payline.late{color:var(--bad)}
+.payline.soon::before,.payline.late::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px;animation:pulse 1.8s ease infinite}
+details.card summary h3{flex:1}
+details.card summary .muted{margin-right:10px}
+.hist li{font-size:.86rem}
+.worked{display:grid;gap:10px}
+.wk{display:flex;gap:10px;align-items:center}.wk>span{display:grid}
+.wk .ok{color:var(--ok);font-size:.82rem;font-weight:700}.wk .late{color:var(--warn);font-size:.82rem;font-weight:700}
+.emptyicon{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;margin:0 auto 4px;background:linear-gradient(135deg,color-mix(in srgb,var(--g2) 18%,var(--card)),color-mix(in srgb,var(--g3) 18%,var(--card)));color:var(--g3)}
+.orow.preview{cursor:default;box-shadow:inset 4px 0 0 var(--link),var(--shadow)}
+.orow.preview:hover{transform:none}
+@media print{
+  .top,.tabbar,#sheet,.toast,.foot,.back .iconbtn,.btn,.linkbtn,.track,.stage,.tipbtn,.noprint,.confetti{display:none!important}
+  body,.app{background:#fff;color:#000}
+  .panel{max-width:none;padding:0}
+  .card,.paycard{box-shadow:none;border:1px solid #ccc;break-inside:avoid}
+  .back{position:static;border:0}.back b{font-size:1.4rem}
+  details.card summary::after{content:""}
+}

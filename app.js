@@ -30,6 +30,7 @@ const ICON={
  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
  check:'<path d="M20 6L9 17l-5-5"/>',
  back:'<path d="M15 5l-7 7 7 7"/>',
+ bell:'<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
  close:'<path d="M6 6l12 12M18 6L6 18"/>',
  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
  track:'<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h5a4 4 0 0 0 0-8h-2a4 4 0 0 1 0-8h5"/>',
@@ -298,7 +299,9 @@ function render(){
   else if(ui.role==="brand")html=brandView();
   else html=teamView();
   const view=$("#view");view.innerHTML=html;
-  if(prev!==ui.page&&ui.page){view.classList.remove("enter");void view.offsetWidth;view.classList.add("enter");}
+  if(prev!==ui.page&&ui.page){view.classList.remove("enter");void view.offsetWidth;view.classList.add("enter");countUp();}
+  const bell=$("#bell"),me=ui.role==="creator"&&!ui.deal?meC():null;
+  if(me){const n=notifications(me).filter(x=>x.need).length;bell.hidden=false;bell.innerHTML=ic("bell")+(n?'<span class="badge">'+n+'</span>':'');bell.setAttribute("aria-label",n?n+" things need you":"Notifications");}else bell.hidden=true;
   const tabs=tabsFor(),nav=$("#tabbar");
   if(!tabs){nav.hidden=true;nav.innerHTML="";document.body.classList.remove("has-tabs");}
   else{
@@ -483,7 +486,7 @@ function creatorHome(me){
   return '<div class="panel form">'+(ui.justSetup?'<div class="status ok welcome">'+tickSvg+'<span><b>You are on Mingle.</b> Next: send your link to the next brand that DMs you.</span></div>':'')+
    '<div class="greet">'+av(me.handle,me.handle,"lg")+'<div><p class="muted">'+hi+'</p><h1>'+esc(me.name?firstName(me.name):"@"+me.handle)+'</h1><p class="muted">@'+esc(me.handle)+(me.verified?'<span class="tick" aria-label="verified">✓</span>':'')+'</p></div></div>'+
    '<div class="next"><span class="nicon">'+ic(n.icon)+'</span><div class="grow"><p class="mgoal">Your next step</p><h2>'+esc(n.title)+'</h2><p>'+esc(n.text)+'</p></div><button class="btn primary" data-act="'+n.act+'" data-v="'+esc(n.v)+'">'+esc(n.cta)+'</button></div>'+
-   '<div class="kpis"><div><b>'+of.filter(o=>o.status==="new"&&!o.interested).length+'</b><span>Offers to answer</span></div><div><b>'+of.filter(o=>o.status==="locked"&&!o.paid_at).length+'</b><span>Deals in progress</span></div><div><b>'+inr(earned)+'</b><span>Paid through Mingle</span></div><div><b>'+(me.total_posts?me.on_time_posts+"/"+me.total_posts:"New")+'</b><span>Posted on time</span></div></div>'+
+   '<div class="kpis"><div><b>'+of.filter(o=>o.status==="new"&&!o.interested).length+'</b><span>Offers to answer</span></div><div><b>'+of.filter(o=>o.status==="locked"&&!o.paid_at).length+'</b><span>Deals in progress</span></div><div><b data-count="'+earned+'" data-fmt="inr">'+inr(earned)+'</b><span>Paid through Mingle</span></div><div><b>'+(me.total_posts?me.on_time_posts+"/"+me.total_posts:"New")+'</b><span>Posted on time</span></div></div>'+
    '<div class="card journey"><div class="row">'+ring(done,steps.length)+'<div><h3>Your Mingle journey</h3><p class="muted">'+done+' of '+steps.length+' done</p></div></div><ol class="jsteps">'+steps.map(s=>'<li class="'+(s[1]?"done":"")+'"><span class="jdot">'+(s[1]?ic("check"):"")+'</span><span>'+esc(s[0])+(s[2]?'<em>'+esc(s[2])+'</em>':'')+'</span></li>').join("")+'</ol></div>'+
    (act.length?'<div class="card"><h3>Recent activity</h3><ul class="act">'+act.slice(0,7).map(a=>'<li><span class="aicon">'+ic(a[1])+'</span><span class="grow">'+esc(a[2])+'</span><span class="muted">'+ago(a[0])+'</span></li>').join("")+'</ul></div>':'')+
   '</div>';
@@ -496,7 +499,7 @@ function offerRow(o,me){
 function creatorOffers(me){
   const mine=myOffers(me).sort((a,b)=>b.created_at.localeCompare(a.created_at));
   const handled=o=>o.status==="declined"||o.interested||isContract(o);
-  if(!mine.length)return creatorHead(me)+'<div class="panel form"><div class="card empty"><h3>No offers yet</h3><p class="muted">Paste your link in your next reply to a brand. Their brief lands here, sorted by your rules.</p><button class="btn dark wide" data-act="tab" data-v="link">Get my link</button></div></div>';
+  if(!mine.length)return creatorHead(me)+'<div class="panel form"><div class="card empty"><span class="emptyicon">'+ic("inbox")+'</span><h3>No offers yet</h3><p class="muted">Paste your link in your next reply to a brand. Their brief lands here, sorted by your rules.</p><button class="btn dark wide" data-act="tab" data-v="link">Get my link</button></div></div>';
   const open=mine.filter(o=>!handled(o)),cnt={fits:0,check:0,misses:0};open.forEach(o=>{cnt[fit(me,terms(o,briefOf(o))).result]++;});
   const fl=ui.offerFilter,list=fl==="handled"?mine.filter(handled):open.filter(o=>fl==="open"||fit(me,terms(o,briefOf(o))).result===fl);
   const chip=(k,l,n)=>'<button class="chip" data-act="offerFilter" data-v="'+k+'" aria-pressed="'+(fl===k)+'">'+l+(n!=null?' <b>'+n+'</b>':'')+'</button>';
@@ -517,18 +520,64 @@ function offerDetail(me){
   else action='<div class="btnrow"><button class="btn" data-act="openSheet" data-v="decline">Decline politely</button><button class="btn primary" data-act="openSheet" data-v="yes">I\'m interested</button></div>';
   return backBar("closeOffer","Offer")+'<div class="panel form"><div class="hero-art">'+art(b,true)+'<div class="ha-txt"><span class="tag">'+(b.source==="campaign"?"Campaign invite":"Via your link")+'</span><h2>'+esc(b.product)+'</h2></div></div>'+
    '<div class="row brandrow">'+logo(b.brand_name)+'<div class="grow"><b>'+esc(b.brand_name)+'</b><p class="muted">'+esc(b.contact_name)+(b.contact_role?', '+esc(b.contact_role):'')+(b.website?' · '+esc(b.website):'')+'</p></div><span class="muted">'+ago(o.created_at)+'</span></div>'+
-   '<div class="feehero"><b>'+feeTxt(t)+'</b><span>'+esc(t.deliverables)+(t.is_barter?'':' · paid by '+fmtD(due))+'</span></div>'+
+   '<div class="feehero"><b'+(t.is_barter?'':' data-count="'+Number(t.fee_inr)+'" data-fmt="inr"')+'>'+feeTxt(t)+'</b><span>'+esc(t.deliverables)+(t.is_barter?'':' · paid by '+fmtD(due))+'</span></div>'+
    '<div class="verdict '+f.result+'"><span class="pill '+f.result+'">'+({fits:"Fits",check:"Check",misses:"Misses"})[f.result]+'</span><div><b>'+verdict[0]+'</b><span>'+verdict[1]+'</span></div></div>'+
-   '<div class="card"><h3>How it matches your rules</h3><ul class="rules">'+rc.map(r=>'<li class="'+r[0]+'"><span class="rmark">'+(r[0]==="ok"?"✓":r[0]==="check"?"!":"✕")+'</span><div><b>'+r[1]+'</b><span>'+esc(r[2])+'</span></div></li>').join("")+'</ul></div>'+
+   reachedYou(o,b,me)+'<div class="card"><h3>How it matches your rules</h3><ul class="rules">'+rc.map(r=>'<li class="'+r[0]+'"><span class="rmark">'+(r[0]==="ok"?"✓":r[0]==="check"?"!":"✕")+'</span><div><b>'+r[1]+'</b><span>'+esc(r[2])+'</span></div></li>').join("")+'</ul></div>'+
    '<div class="card"><h3>The brief</h3><dl class="terms"><dt>You make</dt><dd>'+esc(t.deliverables)+'</dd><dt>Category</dt><dd>'+esc(t.category)+'</dd><dt>Post on</dt><dd>'+fmtD(t.post_date)+' <span class="muted">('+inDays(t.post_date)+')</span></dd><dt>Runs</dt><dd>'+(t.usage_type==="paid"?"Your page plus paid ads, "+esc(t.usage_days)+" days":"Your page only")+tip("use:"+o.id,usageTip(t))+'</dd><dt>Revisions</dt><dd>'+esc(t.revision_rounds)+' round'+(Number(t.revision_rounds)===1?"":"s")+tip("rev:"+o.id,revTip(t))+'</dd><dt>Paid</dt><dd>'+(t.is_barter?"Barter":esc(t.payment_days)+" days after posting")+'</dd><dt>Claims</dt><dd>'+(String(t.claims||"").trim()?esc(t.claims):"None")+'</dd></dl></div>'+
    (handled?'':'<div class="card"><h3>If you say yes</h3>'+timeline([["","We write up the agreed terms","Within 12 hours, sent to you and "+esc(firstName(b.contact_name))],["","You both confirm seven terms","Terms lock before you film"],["","Film and post by "+fmtS(t.post_date),"Mark it live with the link"],["",t.is_barter?"Keep the product":"Get paid by "+fmtS(due),t.is_barter?"No payment date on barter":"The date stays in front of the brand"]])+'</div>')+
    '<div class="actbar">'+action+'</div></div>';
+}
+// dates that matter turn amber within three days and red once they pass
+function urgency(o){
+  if(o.paid_at||o.status!=="locked")return "";const t=terms(o,briefOf(o)),d=o.posted_at?dueDate(t):t.post_date,n=daysTo(d);
+  if(n==null||o.posted_at&&o.payment_sent_at)return "";return n<0?"late":n<=3?"soon":"";
+}
+// how the brief actually reached the creator: the brand's DM, the creator's reply with the link, then the brief
+function reachedYou(o,b,me){
+  if(b.source==="campaign")return '<div class="card"><h3>How this reached you</h3><div class="thread"><div class="bub sys">'+ic("rank")+'<span>The Mingle team ranked you <b>'+(o.match_score!=null?o.match_score+" / 100":"a top match")+'</b> for this campaign on niche, top city, age band, rate and delivery record. Follower count is never used.</span></div><div class="bub in"><b>'+esc(b.brand_name)+'</b>Hi '+esc(firstName(me.name))+', we would love you on our '+esc(b.product)+' launch. The full brief is on Mingle.<i>'+ago(o.created_at)+'</i></div></div></div>';
+  const t0=T(o.created_at),at=ms=>ago(new Date(t0-ms).toISOString());
+  return '<div class="card"><h3>How this reached you</h3><div class="thread">'+
+   '<div class="bub in"><b>@'+esc(String(b.website||b.brand_name).replace(/\..*$/,"").replace(/[^a-z0-9]/gi,"").toLowerCase())+'</b>Hi '+esc(firstName(me.name))+'! We are '+esc(b.brand_name)+' and love your '+esc(String(me.niche||"").toLowerCase())+' content. Open to a collab for our '+esc(b.product)+'? 💛<i>'+at(3*36e5)+'</i></div>'+
+   '<div class="bub out">Hi, thanks for reaching out! Could you share the brief here? It takes about 3 minutes: mingle/c/'+esc(me.handle)+'<i>'+at(1.8*36e5)+' · your Mingle link</i></div>'+
+   '<div class="bub sys">'+ic("doc")+'<span>'+esc(firstName(b.contact_name))+' filled the brief in '+Math.max(1,Math.round((Number(b.time_to_submit_sec)||180)/60))+' minutes. It arrived complete: fee, deliverables, usage, post date and payment terms.</span></div></div></div>';
+}
+// a dated record of everything that happened on a deal
+function dealHistory(o,b){
+  const e=[[b.created_at,"doc","Brief sent by "+b.brand_name],[o.interested_at,"check","Creator said yes"],[o.contract_sent_at,"doc","Agreed terms written up and sent to both sides"],
+    [o.creator_confirmed_at,"user","Creator confirmed the terms"],[o.brand_confirmed_at,"user","Brand confirmed the terms"],[o.locked_at,"check","Terms locked before filming"],
+    [o.posted_at,"send","Post went live"+(o.post_link?"":"")],[o.payment_sent_at,"send","Brand marked the payment as sent"],[o.paid_at,"check","Creator confirmed the payment arrived"]];
+  rows("change_requests").filter(r=>r.offer_id===o.id).forEach(r=>e.push([r.created_at,"cal","The "+r.side+" asked to change "+String(r.field||"a term").toLowerCase()+(r.after_filming?", after filming":"")]));
+  const list=e.filter(x=>x[0]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  return '<details class="card"><summary><h3>Deal history</h3><span class="muted">'+list.length+' entries</span></summary><ul class="act hist">'+list.map(x=>'<li><span class="aicon">'+ic(x[1])+'</span><span class="grow">'+esc(x[2])+'</span><span class="muted">'+fmtS(x[0])+', '+new Date(x[0]).toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"})+'</span></li>').join("")+'</ul></details>';
+}
+// what the creator will see, before the brand sends
+function seesPreview(p,c){
+  const due=p.is_barter?null:addDays(p.post_date,p.payment_days);
+  return '<p class="lbl">'+(c?'What @'+esc(c.handle)+' sees':'What each creator sees')+'</p><div class="orow preview"><span class="othumb">'+art(p)+'</span><span class="grow"><span class="otop"><b>'+esc(p.brand_name||"Your brand")+'</b><span class="pill info">New</span></span><span class="oprod">'+esc(p.product)+' · '+esc(p.deliverables)+'</span><span class="ofee">'+feeTxt(p)+'</span><span class="why">'+(due?'Paid by '+fmtD(due)+' · ':'')+(p.usage_type==="paid"?"Paid ads "+p.usage_days+" days":"Their page only")+'</span><span class="sub">Sorted against their own rules the moment you send</span></span></div>';
+}
+// everything a creator should know about, newest first; the bell counts the ones that need them
+function notifications(me){
+  const out=[];
+  myOffers(me).forEach(o=>{const b=briefOf(o),t=terms(o,b);
+    if(o.status==="new"&&!o.interested)out.push({at:o.created_at,act:"openOffer",v:o.id,need:true,icon:"inbox",text:(b.source==="campaign"?"Campaign invite from ":"New brief from ")+b.brand_name,sub:feeTxt(t)+" · "+t.deliverables});
+    if(isContract(o)&&o.status!=="locked"&&o.status!=="change_requested"&&!o.creator_confirmed_at)out.push({at:o.contract_sent_at||o.created_at,act:"openDeal",v:o.id,need:true,icon:"doc",text:b.brand_name+": agreed terms ready to confirm",sub:"Seven terms, about a minute"});
+    if(o.status==="locked"&&!o.posted_at)out.push({at:o.locked_at,act:"openDeal",v:o.id,need:daysTo(t.post_date)<=3,icon:"cal",text:"Post for "+b.brand_name+" "+inDays(t.post_date),sub:t.deliverables+" · due "+fmtD(t.post_date)});
+    if(o.payment_sent_at&&!o.paid_at)out.push({at:o.payment_sent_at,act:"openDeal",v:o.id,need:true,icon:"send",text:b.brand_name+" marked your fee as sent",sub:"Confirm once it reaches your account"});
+    if(o.paid_at)out.push({at:o.paid_at,act:"openDeal",v:o.id,need:false,icon:"check",text:b.brand_name+" paid you "+inr(t.fee_inr),sub:"Deal complete"});});
+  return out.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+}
+function countUp(){
+  if(reduced())return;
+  document.querySelectorAll("#view [data-count]").forEach(el=>{const to=Number(el.dataset.count)||0,fmt=el.dataset.fmt,t0=performance.now(),dur=700;
+    const f=x=>fmt==="inr"?inr(x):String(Math.round(x));
+    const step=now=>{const k=Math.min(1,(now-t0)/dur),e=1-Math.pow(1-k,3);el.textContent=f(to*e);if(k<1&&!document.hidden)requestAnimationFrame(step);else el.textContent=f(to);};
+    requestAnimationFrame(step);});
 }
 function creatorDeals(me){
   const of=myOffers(me).filter(isContract);
   const needs=of.filter(o=>myTurn(o,"creator")),waiting=of.filter(o=>!o.paid_at&&!needs.includes(o)),done=of.filter(o=>o.paid_at);
   const grp=(t,l)=>l.length?'<p class="group-h">'+t+' ('+l.length+')</p>'+l.map(o=>dealRow(o,"creator")).join(""):"";
-  return creatorHead(me)+'<div class="panel form">'+(of.length?grp("Needs you",needs)+grp("In progress",waiting)+grp("Done",done):'<div class="card empty"><h3>No deals yet</h3><p class="muted">When you say yes to an offer, our team writes up the agreed terms within 12 hours and they appear here.</p><button class="btn dark wide" data-act="tab" data-v="offers">See my offers</button></div>')+'</div>';
+  return creatorHead(me)+'<div class="panel form">'+(of.length?grp("Needs you",needs)+grp("In progress",waiting)+grp("Done",done):'<div class="card empty"><span class="emptyicon">'+ic("inbox")+'</span><h3>No deals yet</h3><p class="muted">When you say yes to an offer, our team writes up the agreed terms within 12 hours and they appear here.</p><button class="btn dark wide" data-act="tab" data-v="offers">See my offers</button></div>')+'</div>';
 }
 function dealNote(o,side){
   const t=terms(o,briefOf(o)),due=dueDate(t),other=side==="creator"?"brand":"creator";
@@ -541,7 +590,7 @@ function dealNote(o,side){
 }
 function dealRow(o,side){
   const b=briefOf(o),c=byHandle(o.creator_id)||{handle:o.creator_id},t=terms(o,b),st=dealStage(o);
-  return '<button class="list-item deal" data-act="openDeal" data-v="'+o.id+'" data-side="'+side+'">'+(side==="creator"?logo(b.brand_name):av(c.handle,c.handle))+'<span class="grow"><b>'+esc(side==="creator"?b.brand_name:"@"+c.handle)+'</b><span class="muted" style="display:block">'+esc(b.product)+' · '+feeTxt(t)+'</span><span class="ministeps">'+DEAL_STEPS.map((s,i)=>'<i class="'+(i<st||o.paid_at?"done":i===st?"cur":"")+'"></i>').join("")+'</span><span class="payline">'+esc(dealNote(o,side))+'</span></span>'+ic("arrow")+'</button>';
+  return '<button class="list-item deal" data-act="openDeal" data-v="'+o.id+'" data-side="'+side+'">'+(side==="creator"?logo(b.brand_name):av(c.handle,c.handle))+'<span class="grow"><b>'+esc(side==="creator"?b.brand_name:"@"+c.handle)+'</b><span class="muted" style="display:block">'+esc(b.product)+' · '+feeTxt(t)+'</span><span class="ministeps">'+DEAL_STEPS.map((s,i)=>'<i class="'+(i<st||o.paid_at?"done":i===st?"cur":"")+'"></i>').join("")+'</span><span class="payline '+urgency(o)+'">'+esc(dealNote(o,side))+'</span></span>'+ic("arrow")+'</button>';
 }
 function replyText(me){return "Hi, thanks for reaching out! So I can reply properly, could you share the brief here? It takes about 3 minutes: "+ORIGIN+"/c/"+encodeURIComponent(me.handle);}
 function msgBox(key,text){return '<div class="link" id="m-'+esc(key.replace(/[^a-z0-9-]/gi,"_"))+'">'+esc(text)+'</div><button type="button" class="btn sm" data-act="copy" data-v="'+esc(key)+'">Copy message</button>';}
@@ -568,6 +617,7 @@ function creatorProfile(me){
   (me.verified?'<p class="status ok">Audience verified on '+fmtD(me.verified_at)+'. Brands see these numbers.</p>':me.verify_slot?'<p class="status info">Verification call booked: '+esc(me.verify_slot)+'. Keep your insights screenshot ready.</p>':'<div class="status warn row"><span class="grow">Not verified yet. Brands trust verified audiences.</span><button class="btn sm" data-act="openSheet" data-v="bookCall">Book a call</button></div>')+
   '<div class="card"><h3>Your rates</h3><div class="hl">'+FORMATS.filter(([k])=>k==="reel"||Number(r[k])>0).map(([k,l])=>'<div class="hlc"><div class="c">'+inr(k==="reel"?me.min_fee_inr:r[k])+'</div><span>'+l+'</span></div>').join("")+'</div></div>'+
   '<div class="card"><h3>Your rules</h3><dl class="terms"><dt>Barter</dt><dd>'+(me.barter_rule==="never"?"Never":"If worth ≥ "+inr(me.barter_floor_inr))+'</dd><dt>Paid within</dt><dd>'+me.max_pay_days+' days of posting</dd><dt>Paid ads</dt><dd>'+(me.paid_ads_extra?"Extra fee":"Included")+'</dd><dt>Won\'t promote</dt><dd>'+((me.blocked_categories||[]).join(", ")||"Nothing listed")+'</dd></dl></div>'+
+  (of.filter(o=>o.locked_at).length?'<div class="card"><h3>Brands I\'ve worked with</h3><div class="worked">'+of.filter(o=>o.locked_at).map(o=>{const b=briefOf(o),t=terms(o,b),d=dueDate(t),late=o.paid_at&&d?daysTo(o.paid_at)-daysTo(d):null;return '<div class="wk">'+logo(b.brand_name)+'<span><b>'+esc(b.brand_name)+'</b><span class="muted">'+esc(t.deliverables)+'</span><span class="'+(o.paid_at?late>0?"late":"ok":"muted")+'">'+(o.paid_at?late>0?"Paid "+late+" days late":"Paid on time":o.posted_at?"Posted, payment due "+fmtS(d):"In progress")+'</span></span></div>';}).join("")+'</div></div>':'')+
   '<div class="card"><h3>What brands see</h3><p class="muted">Your verified audience and recent posts, never your follower count used to rank you.</p>'+tiles(me.handle,6)+'</div>'+
   '<button class="btn dark wide" data-act="editRules">Edit my rates and rules</button><button class="btn wide" data-act="signOut">Sign out on this phone</button></div>';
 }
@@ -641,7 +691,7 @@ function briefWizard(form){
     '<p class="muted">We rank verified creators on niche, top city, age band, rate and delivery record. Follower count is never used.</p></div>';
   if(s===last){const p=briefPayload(f),due=p.is_barter?null:addDays(p.post_date,p.payment_days);
     const sec=(i,title,lines)=>'<div class="rv"><div class="rvh"><b>'+title+'</b><button class="linkbtn" data-act="wizGo" data-form="'+form+'" data-v="'+i+'">Edit</button></div>'+lines.map(l=>'<p>'+l+'</p>').join("")+'</div>';
-    body='<div class="card review">'+(c?'<div class="row">'+av(c.handle,c.handle)+'<p class="grow">Going to <b>@'+esc(c.handle)+'</b>, who sees it sorted against their own rules.</p></div>':'')+
+    body=seesPreview(p,c)+'<div class="card review">'+(c?'<div class="row">'+av(c.handle,c.handle)+'<p class="grow">Going to <b>@'+esc(c.handle)+'</b>, who sees it sorted against their own rules.</p></div>':'')+
       sec(0,"About you",[esc(p.brand_name)+' · '+esc(p.contact_name)+(p.contact_role?', '+esc(p.contact_role):'')])+
       sec(1,"The product",[esc(p.product)+' · '+esc(p.category),'Each creator makes '+esc(p.deliverables)])+
       sec(2,"Fee and dates",[feeTxt(p)+' per creator','Post on '+fmtD(p.post_date)+(due?', paid by '+fmtD(due):'')])+
@@ -694,10 +744,12 @@ function dealView(){
   let out=backBar("closeDeal",b.brand_name+" × @"+c.handle)+'<div class="panel form"><div class="pair">'+logo(b.brand_name,"lg")+'<span class="x">×</span>'+av(c.handle,c.handle,"lg")+'</div><p class="muted center">'+esc(b.product)+' · you are the '+side+'</p>';
   if(!isContract(o))return out+'<p class="status info">We are writing up the agreed terms and send them within 12 hours of the yes.</p></div>';
   out+='<ol class="track">'+DEAL_STEPS.map((s,i)=>'<li class="'+(i<st||o.paid_at?"done":i===st?"cur":"")+'"><span></span><b>'+s+'</b></li>').join("")+'</ol>';
-  out+='<div class="paycard"><span>'+(t.is_barter?"Barter deal":"Fee")+'</span><b>'+feeTxt(t)+'</b>'+(due?'<span>Paid by <b>'+fmtD(due)+'</b>, '+esc(t.payment_days)+' days after the '+fmtD(t.post_date)+' post</span>':'')+'</div>';
+  out+='<div class="paycard"><span>'+(t.is_barter?"Barter deal":"Fee")+'</span><b'+(t.is_barter?'':' data-count="'+Number(t.fee_inr)+'" data-fmt="inr"')+'>'+feeTxt(t)+'</b>'+(due?'<span>Paid by <b>'+fmtD(due)+'</b>, '+esc(t.payment_days)+' days after the '+fmtD(t.post_date)+' post</span>':'')+'</div>';
   out+=dealStagePanel(o,b,t,c,side,other,due);
   out+='<details class="card"'+(o.status==="locked"?'':' open')+'><summary><h3>All seven terms</h3></summary><dl class="terms">'+sevenTerms(t,true).map(x=>'<dt>'+x[1]+'</dt><dd>'+esc(x[2])+'</dd>').join("")+'<dt>Creator</dt><dd>@'+esc(c.handle)+(c.verified_at?'<span class="muted" style="display:block;font-weight:400">Audience verified on '+fmtD(c.verified_at)+'</span>':'')+'</dd><dt>Brand contact</dt><dd>'+esc(b.contact_name)+(b.contact_role?", "+esc(b.contact_role):"")+'</dd></dl></details>';
   if(o.status!=="change_requested"&&!o.paid_at)out+='<button class="btn wide" data-act="openSheet" data-v="change">Ask for a change</button>';
+  out+=dealHistory(o,b);
+  if(o.status==="locked")out+='<button class="btn wide noprint" data-act="printTerms" data-v="'+o.id+'">Save a copy of the agreed terms (PDF)</button>';
   out+='<p class="muted center">These are agreed terms, not a legal contract.</p>';
   return out+'</div>';
 }
@@ -764,6 +816,8 @@ function sheetBody(s){
     if(s.done)return '<div class="bigok">'+tickSvg+'<h2>Deal complete</h2><p class="muted">Paid and logged. It counts towards your on-time record.</p></div><button class="btn primary wide" data-act="closeSheet">Done</button>';
     const o=all("offers")[s.id],t=terms(o,briefOf(o));
     return '<h2>The fee has arrived</h2><p class="muted">Confirm what reached your account.</p>'+CK("paid-c-"+s.id,"match","I received the full "+feeTxt(t))+'<button class="btn primary wide" data-act="confirmPaid" data-v="'+s.id+'">Confirm payment</button>';}
+  if(s.type==="notifs"){s.title="Notifications";const list=me?notifications(me):[];
+    return '<h2>Notifications</h2>'+(list.length?'<ul class="notifs">'+list.map(x=>'<li><button class="nrow'+(x.need?" need":"")+'" data-act="'+x.act+'" data-v="'+esc(x.v)+'"><span class="aicon">'+ic(x.icon)+'</span><span class="grow"><b>'+esc(x.text)+'</b><span class="muted">'+esc(x.sub)+'</span></span><span class="muted">'+ago(x.at)+'</span></button></li>').join("")+'</ul>':'<p class="muted">Nothing yet. New briefs from your link show up here.</p>');}
   if(s.type==="locked"){s.title="Terms locked";const o=all("offers")[s.id]||{},t=terms(o,briefOf(o));
     return '<div class="bigok">'+tickSvg+'<h2>Terms locked</h2><p class="muted">Both of you confirmed all seven terms on '+fmtD(today())+'.</p></div>'+timeline([["done","Terms locked","Today"],["cur","Film and post",fmtD(t.post_date)],["",t.is_barter?"Keep the product":"Payment",t.is_barter?"":fmtD(dueDate(t))]])+'<button class="btn primary wide" data-act="closeSheet">Got it</button>';}
   return "";
@@ -1038,7 +1092,7 @@ const act={
   cancelEdit(){ui.editRules=false;delete ui.draft.setup;ui.err={};render();},
   signOut(){ui.token=null;store("mingle.token",null);ui.justSetup=false;load(null);ui.role="home";go("/");render();},
   offerFilter(d){ui.offerFilter=d.v;render();},
-  openOffer(d){ui.offer=d.v;ui.tips.clear();render();window.scrollTo(0,0);ev("offer_opened",{offer_id:d.v,demo:!!(all("offers")[d.v]||{}).demo});},
+  openOffer(d){ui.sheet=null;ui.offer=d.v;ui.tips.clear();render();window.scrollTo(0,0);ev("offer_opened",{offer_id:d.v,demo:!!(all("offers")[d.v]||{}).demo});},
   closeOffer(){ui.offer=null;render();window.scrollTo(0,0);},
   openSheet(d,el){ui.sheet={type:d.v,id:ui.offer||ui.deal,field:el&&el.dataset.field};ui.err={};if(d.v==="change"&&el&&el.dataset.field){delete D("chg").field;}render();},
   closeSheet(){const s=ui.sheet;ui.sheet=null;if(s&&s.type==="decline"&&s.done)ui.offer=null;render();},
@@ -1091,6 +1145,7 @@ const act={
   clearCode(){ui.brandCode="";D("bc").code="";go("/brand");load(null);render();},
   async openDeal(d){ui.deal=d.v;ui.offer=null;ui.dealTok=(d.side||ui.role)==="creator"?ui.token:ui.brandCode;ui.dealSide=null;ui.sheet=null;render();window.scrollTo(0,0);await refresh();},
   async closeDeal(){ui.deal=null;ui.dealSide=null;ui.dealTok=null;ui.sheet=null;go(ui.role==="brand"&&ui.brandCode?"/track/"+ui.brandCode:rolePath());render();await refresh();},
+  printTerms(d){ev("terms_printed",{deal_id:d.v,side:ui.dealSide});document.querySelectorAll("details").forEach(x=>x.open=true);setTimeout(()=>window.print(),50);},
   reviewStart(d){ui.review[d.v]=0;ev("terms_review_started",{deal_id:d.v,side:ui.dealSide});render();},
   reviewNext(d){ui.review[d.v]=(ui.review[d.v]||0)+1;render();},
   reviewBack(d){ui.review[d.v]=Math.max(0,(ui.review[d.v]||0)-1);render();},
